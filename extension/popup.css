@@ -1,0 +1,160 @@
+body {
+  font-family: Arial, sans-serif;
+  width: 360px;
+  padding: 14px;
+  background: #090909;
+  color: #f5f1ea;
+  margin: 0;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+  color: #c44536;
+  letter-spacing: 0.3px;
+}
+
+h3 {
+  font-size: 14px;
+  margin: 0 0 8px 0;
+  color: #d9c7b8;
+  font-weight: 600;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #2f2a28;
+  border-radius: 8px;
+  outline: none;
+  background: #161312;
+  color: #f5f1ea;
+}
+
+input::placeholder {
+  color: #8e7f73;
+}
+
+button {
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+button:hover {
+  opacity: 0.92;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+}
+
+#startBtn {
+  flex: 1;
+  background: #c44536;
+  color: white;
+}
+
+#startBtn.active {
+  box-shadow: 0 0 0 2px #e05a47;
+}
+
+#stopBtn {
+  width: 90px;
+  background: #1b263b;
+  color: #f5f1ea;
+}
+
+#overrideBtn {
+  margin-top: 8px;
+  width: 100%;
+  background: #4a332d;
+  color: #f5f1ea;
+}
+
+#status {
+  font-size: 13px;
+  color: #b9aaa0;
+}
+
+.topic-box,
+.stats,
+.section-card {
+  background: #101722;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #1d2a3d;
+}
+
+.topic-box p {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #f5f1ea;
+}
+
+.stats {
+  display: grid;
+  gap: 6px;
+}
+
+.stats p {
+  margin: 0;
+  font-size: 13px;
+}
+
+ul {
+  padding-left: 0;
+  list-style: none;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+li {
+  background: #151515;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  line-height: 1.4;
+  border: 1px solid #242424;
+}
+
+li strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #c44536;
+}
+
+li span {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #f5f1ea;
+}
+
+small {
+  display: block;
+  color: #a08f83;
+  font-size: 12px;
+}
+
+a {
+  color: #d9c7b8;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+a:hover {
+  color: #ffffff;
+}

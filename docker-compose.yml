@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  gateway:
+    build: .
+    container_name: devils-advocate-gateway
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Devil's Advocate</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Devil's Advocate</h1>
+
+    <div class="buttons">
+      <button id="startBtn">Start Session</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="topic-box">
+      <h3>Research Topic</h3>
+      <p id="topicDisplay">Awaiting topic inference...</p>
+      <input id="topicOverride" type="text" placeholder="Override topic (optional)" />
+      <button id="overrideBtn">Update Topic</button>
+    </div>
+
+    <div class="stats">
+      <p>Analyzed: <span id="analyzed">0</span></p>
+      <p>Approved: <span id="approved">0</span></p>
+      <p>Skipped: <span id="skipped">0</span></p>
+    </div>
+
+    <div class="section-card">
+      <h3>Aligned Research</h3>
+      <ul id="alignedList"></ul>
+    </div>
+
+    <div class="section-card">
+      <h3>Alternate Research</h3>
+      <ul id="alternateList"></ul>
+    </div>
+
+    <div class="section-card">
+      <h3>Decision Feed</h3>
+      <ul id="activity"></ul>
+    </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

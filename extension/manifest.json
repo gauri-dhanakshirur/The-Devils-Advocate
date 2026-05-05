@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Devil's Advocate",
+  "version": "1.0.0",
+  "description": "A bias-aware research assistant that surfaces missing perspectives.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Devil's Advocate"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
