@@ -50,6 +50,18 @@ class VectorMemory:
         # Always store locally to make centroid calculation easy
         self.local_memory.append({"vector": vector, "metadata": metadata})
 
+    def remove_vector_by_url(self, url: str) -> bool:
+        """Remove a stored vector by its source URL. Returns True if removed."""
+        before = len(self.local_memory)
+        self.local_memory = [
+            item for item in self.local_memory
+            if item["metadata"].get("url") != url
+        ]
+        removed = len(self.local_memory) < before
+        if removed:
+            logger.info("Removed vector for URL: %s", url)
+        return removed
+
     def get_all_vectors(self) -> list[dict]:
         """Retrieve all vectors for the current session."""
         # For simplicity, we just return the local copy of the session's vectors

@@ -80,6 +80,23 @@ class AnalyzeRequest(BaseModel):
         default="",
         description="The URL of the current page for Gatekeeper filtering."
     )
+    session_topic: Optional[str] = Field(
+        default="",
+        description="User-defined research topic to anchor the analysis."
+    )
+
+class RelevanceRequest(BaseModel):
+    title: str = ""
+    url: str = ""
+    domain: str = ""
+    metaDescription: str = ""
+    headings: list = []
+    session_topic: str = ""
+
+class RelevanceResponse(BaseModel):
+    confidence: float
+    decision: str
+    reason: str
 
 
 class AnalyzeResponse(BaseModel):
@@ -154,7 +171,7 @@ async def analyze(request: AnalyzeRequest):
 
     try:
         orchestrator = Orchestrator()
-        result = orchestrator.run(sanitized_text, request.url)
+        result = orchestrator.run(sanitized_text, request.url, request.session_topic)
     except Exception as e:
         logger.exception("Pipeline failed")
         raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {e}")
@@ -197,6 +214,43 @@ async def quick_bias(request: AnalyzeRequest):
     except Exception as e:
         logger.exception("Quick-bias failed")
         raise HTTPException(status_code=500, detail=f"Quick bias analysis error: {e}")
+
+@app.post("/relevance-check", response_model=RelevanceResponse, tags=["Analysis"])
+async def relevance_check(request: RelevanceRequest):
+    """Progressive Analysis Step 2: Lightweight check to determine if full scrape is needed."""
+    from agents.relevance_agent import LightweightRelevanceAgent
+    
+    if not request.session_topic:
+        # If no topic established yet, always scrape to establish baseline
+        return RelevanceResponse(confidence=1.0, decision="scrape", reason="No session topic established; full scrape required.")
+        
+    agent = LightweightRelevanceAgent()
+    metadata = {
+        "title": request.title,
+        "url": request.url,
+        "metaDescription": request.metaDescription,
+        "headings": request.headings
+    }
+    
+    try:
+        result = agent.run(metadata, request.session_topic)
+        return RelevanceResponse(**result)
+    except Exception as e:
+        logger.exception("Relevance check failed")
+        # Default to scrape if it fails
+        return RelevanceResponse(confidence=0.5, decision="scrape", reason=f"Check failed: {str(e)}")
+
+
+@app.delete("/page", tags=["Analysis"])
+async def remove_page(url: str):
+    """Remove a page's vector data from backend memory by URL."""
+    from vector_memory import vector_memory
+    removed = vector_memory.remove_vector_by_url(url)
+    return {
+        "removed": removed,
+        "url": url,
+        "message": "Vector removed from session memory." if removed else "URL not found in session memory."
+    }
 
 
 # ---------------------------------------------------------------------------

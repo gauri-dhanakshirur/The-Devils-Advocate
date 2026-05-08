@@ -84,11 +84,11 @@ class Orchestrator(BaseAgent):
         p = perspective.lower()
         return "counter" in p or "opposing" in p or "dissent" in p
 
-    def run(self, text: str, url: str) -> dict:
+    def run(self, text: str, url: str, session_topic: str = "") -> dict:
         # ── Agent 1: Gatekeeper ─────────────────────────────────────
         logger.info("Running Gatekeeper...")
         try:
-            gatekeeper_output = self.gatekeeper.run(text, url)
+            gatekeeper_output = self.gatekeeper.run(text, url, session_topic)
         except Exception as e:
             logger.error("Gatekeeper failed: %s", e)
             return {
@@ -109,7 +109,7 @@ class Orchestrator(BaseAgent):
         # ── Agent 2: Mirror ─────────────────────────────────────────
         logger.info("Running Bias Auditor...")
         try:
-            mirror_output = self.mirror.run(text, topic)
+            mirror_output = self.mirror.run(text, topic, session_topic)
         except Exception as e:
             logger.error("Mirror failed: %s", e)
             mirror_output = {

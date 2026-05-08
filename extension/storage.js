@@ -12,6 +12,7 @@ export async function startSession(topic) {
   const session = {
     active: true,
     topic: topic || "",
+    userTopic: topic || "",
     sessionId: crypto.randomUUID(),
     startedAt: Date.now(),
     stats: {
@@ -75,15 +76,17 @@ export async function addPageResult(data, pageTitle, pageUrl) {
     const session = await getSession();
     if (!session) return;
 
-    // Add to history
-    if (!session.history) session.history = [];
-    session.history.push({
-      timestamp: Date.now(),
-      title: pageTitle,
-      url: pageUrl,
-      topic: data.gatekeeper?.overarching_topic || "",
-      biasScore: data.mirror?.cumulative_bias_score ?? 5.0,
-    });
+    // Add to history only if we got a valid analysis
+    if (data.mirror && data.mirror.cumulative_bias_score !== undefined) {
+      if (!session.history) session.history = [];
+      session.history.push({
+        timestamp: Date.now(),
+        title: pageTitle,
+        url: pageUrl,
+        topic: data.gatekeeper?.overarching_topic || "",
+        biasScore: data.mirror.cumulative_bias_score,
+      });
+    }
 
     // Accumulate counter-perspectives (with sources)
     const newPerspectives = data.counter_perspectives || [];
@@ -113,7 +116,11 @@ export async function addPageResult(data, pageTitle, pageUrl) {
     session.latestTopic = data.gatekeeper?.overarching_topic || session.latestTopic;
     session.latestOpinionsSummary = data.mirror?.opinions_summary || session.latestOpinionsSummary;
     session.guardrailTriggered = data.guardrail_triggered || false;
-    session.topic = session.latestTopic;
+    
+    // Only overwrite session.topic if the user hasn't explicitly set one
+    if (!session.userTopic) {
+      session.topic = session.latestTopic;
+    }
 
     await updateSession(session);
   } catch (e) {
@@ -136,5 +143,26 @@ export async function addActivity(entry) {
     await updateSession(session);
   } catch (e) {
     console.error("[DA Storage] Failed to add activity:", e);
+  }
+}
+
+export async function removePageResult(url) {
+  try {
+    const session = await getSession();
+    if (!session) return;
+
+    // Remove from history
+    session.history = (session.history || []).filter(h => h.url !== url);
+
+    // Allow re-analysis by removing from processedUrls
+    session.processedUrls = (session.processedUrls || []).filter(u => u !== url);
+
+    // Update stats
+    if (session.stats.analyzed > 0) session.stats.analyzed--;
+    if (session.stats.approved > 0) session.stats.approved--;
+
+    await updateSession(session);
+  } catch (e) {
+    console.error("[DA Storage] Failed to remove page result:", e);
   }
 }

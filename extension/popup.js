@@ -4,14 +4,20 @@ import { getSession, startSession, stopSession, updateSession, addPageResult } f
 const API_BASE = "http://localhost:8000";
 
 // ── DOM References ───────────────────────────────────────────────────
-const analyzeBtn = document.getElementById("analyzeBtn");
+
 const sessionToggle = document.getElementById("sessionToggle");
+const sessionTopicInput = document.getElementById("sessionTopicInput");
+const editTopicBtn = document.getElementById("editTopicBtn");
+const saveTopicBtn = document.getElementById("saveTopicBtn");
+const cancelTopicBtn = document.getElementById("cancelTopicBtn");
+const topicEditContainer = document.getElementById("topicEditContainer");
+const topicNameEl = document.getElementById("topicName");
 const serverStatus = document.getElementById("serverStatus");
 const connectionBanner = document.getElementById("connectionBanner");
 const loadingState = document.getElementById("loadingState");
 const errorState = document.getElementById("errorState");
 const errorMessage = document.getElementById("errorMessage");
-const retryBtn = document.getElementById("retryBtn");
+
 const resultsContainer = document.getElementById("resultsContainer");
 const emptyState = document.getElementById("emptyState");
 const sessionBar = document.getElementById("sessionBar");
@@ -19,7 +25,7 @@ const sessionDuration = document.getElementById("sessionDuration");
 
 // ── State ────────────────────────────────────────────────────────────
 let isServerOnline = false;
-let isAnalyzing = false;
+
 let durationTimer = null;
 
 // ── Server Health Check ──────────────────────────────────────────────
@@ -35,8 +41,6 @@ async function checkServer() {
       serverStatus.title = "Backend connected";
       connectionBanner.classList.add("hidden");
       sessionToggle.disabled = false;
-      const session = await getSession();
-      if (session?.active) analyzeBtn.disabled = false;
       return true;
     }
   } catch (e) { /* not reachable */ }
@@ -46,7 +50,6 @@ async function checkServer() {
   serverStatus.title = "Backend offline";
   connectionBanner.classList.remove("hidden");
   sessionToggle.disabled = true;
-  analyzeBtn.disabled = true;
   return false;
 }
 
@@ -67,107 +70,7 @@ function resetPipeline() {
   for (let i = 1; i <= 4; i++) updatePipelineStep(i, "");
 }
 
-// ── Extract Page Text ────────────────────────────────────────────────
-async function extractCurrentPageText() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.id) throw new Error("No active tab found");
-  if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("about:")) {
-    throw new Error("Cannot analyze browser internal pages");
-  }
-  try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
-  } catch (e) { /* already injected */ }
-  await new Promise(r => setTimeout(r, 200));
-  const response = await chrome.tabs.sendMessage(tab.id, { type: "EXTRACT_PAGE" });
-  if (!response || !response.articleText) throw new Error("Could not extract page content — try refreshing");
-  return { ...response, url: tab.url };
-}
 
-// ── Analyze Current Page (manual trigger) ────────────────────────────
-async function analyzePage() {
-  if (isAnalyzing || !isServerOnline) return;
-  isAnalyzing = true;
-
-  resultsContainer.classList.add("hidden");
-  emptyState.classList.add("hidden");
-  errorState.classList.add("hidden");
-  loadingState.classList.remove("hidden");
-  analyzeBtn.disabled = true;
-  analyzeBtn.querySelector(".btn-text").textContent = "Analyzing...";
-  resetPipeline();
-
-  try {
-    updatePipelineStep(1, "active");
-    const page = await extractCurrentPageText();
-    const text = `${page.title || ""} ${page.metaDescription || ""} ${page.articleText || ""}`.trim();
-    if (text.length < 20) throw new Error("Not enough text on this page to analyze");
-
-    updatePipelineStep(1, "done");
-
-    // Animate pipeline steps progressively
-    let currentStep = 2;
-    const pipelineTimer = setInterval(() => {
-      if (currentStep <= 4) {
-        updatePipelineStep(currentStep, "active");
-        if (currentStep > 2) updatePipelineStep(currentStep - 1, "done");
-        currentStep++;
-      }
-    }, 2000);
-
-    updatePipelineStep(2, "active");
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-    const res = await fetch(`${API_BASE}/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text.slice(0, 12000), url: page.url || "" }),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    clearInterval(pipelineTimer);
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({ detail: `Server error (${res.status})` }));
-      throw new Error(errData.detail || `Analysis failed (${res.status})`);
-    }
-
-    const data = await res.json();
-    for (let i = 1; i <= 4; i++) updatePipelineStep(i, "done");
-    await new Promise(r => setTimeout(r, 400));
-
-    // Update session
-    const session = await getSession();
-    if (session) {
-      session.stats.analyzed++;
-      if (!data.error) {
-        session.stats.approved++;
-        if (!session.processedUrls) session.processedUrls = [];
-        session.processedUrls.push(page.url);
-        await updateSession(session);
-        // Accumulate into session history
-        await addPageResult(data, page.title || page.url, page.url);
-      } else {
-        session.stats.skipped++;
-        await updateSession(session);
-      }
-    }
-
-    // Render full session view
-    await renderSessionView();
-
-  } catch (e) {
-    loadingState.classList.add("hidden");
-    errorState.classList.remove("hidden");
-    errorMessage.textContent = e.name === "AbortError"
-      ? "Analysis timed out — try again."
-      : e.message || "Something went wrong";
-  } finally {
-    isAnalyzing = false;
-    analyzeBtn.disabled = false;
-    analyzeBtn.querySelector(".btn-text").textContent = "Analyze This Page";
-  }
-}
 
 // ── Render Full Session View ─────────────────────────────────────────
 async function renderSessionView() {
@@ -188,7 +91,7 @@ async function renderSessionView() {
   resultsContainer.classList.remove("hidden");
 
   // ── Research Trajectory ──
-  document.getElementById("topicName").textContent = session.latestTopic || "Unknown Topic";
+  topicNameEl.textContent = session.topic || session.latestTopic || "Unknown Topic";
 
   const biasScore = session.latestBiasScore ?? 5.0;
   const biasPercent = (biasScore / 10) * 100;
@@ -206,7 +109,11 @@ async function renderSessionView() {
   historyList.innerHTML = "";
   document.getElementById("historyCount").textContent = session.history.length;
 
-  session.history.forEach((entry, i) => {
+  const displayHistory = [...session.history].reverse();
+  displayHistory.forEach((entry, i) => {
+    // Skip garbage entries that might have slipped through
+    if (entry.biasScore === 5.0 && !entry.topic) return;
+
     const div = document.createElement("div");
     div.className = "history-item";
     div.onclick = () => chrome.tabs.create({ url: entry.url });
@@ -330,19 +237,20 @@ async function toggleSession() {
     await stopSession();
     sessionToggle.classList.remove("active");
     sessionToggle.querySelector(".btn-text").textContent = "Start Research Session";
-    analyzeBtn.disabled = true;
     sessionBar.classList.add("hidden");
     resultsContainer.classList.add("hidden");
     emptyState.classList.remove("hidden");
     if (durationTimer) clearInterval(durationTimer);
   } else {
     // Start session
-    await startSession("");
+    const topic = sessionTopicInput ? sessionTopicInput.value.trim() : "";
+    await startSession(topic);
     sessionToggle.classList.add("active");
     sessionToggle.querySelector(".btn-text").textContent = "End Session";
-    analyzeBtn.disabled = !isServerOnline;
     sessionBar.classList.remove("hidden");
     startDurationTimer();
+    // Kick off analysis on the tab the user is currently viewing
+    chrome.runtime.sendMessage({ type: "ANALYZE_ACTIVE_TAB" });
   }
 }
 
@@ -363,16 +271,20 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-// ── Restore State on Popup Open ──────────────────────────────────────
+// ── Restore State on Popup Open ──────────────────────────────────────────
 async function restoreState() {
   const session = await getSession();
 
   if (session?.active) {
     sessionToggle.classList.add("active");
     sessionToggle.querySelector(".btn-text").textContent = "End Session";
-    analyzeBtn.disabled = !isServerOnline;
     sessionBar.classList.remove("hidden");
     startDurationTimer();
+
+    // Seed tracker variables so auto-refresh doesn't redundantly re-render
+    _lastHistoryLen = session.history?.length || 0;
+    _lastCounterLen = (session.allCounterPerspectives || []).length;
+    _lastStatsAnalyzed = session.stats?.analyzed || 0;
 
     // Render accumulated session data
     await renderSessionView();
@@ -381,26 +293,42 @@ async function restoreState() {
   }
 }
 
-// ── Auto-refresh: poll session data for background updates ──────────
+// ── Auto-refresh: poll session data for background updates ────────────
 let refreshTimer = null;
+let _lastHistoryLen = 0;
+let _lastCounterLen = 0;
+let _lastStatsAnalyzed = 0;
+
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(async () => {
     const session = await getSession();
-    if (session?.active && session.history && session.history.length > 0) {
-      // Only re-render if there's new data
-      const counterCount = document.getElementById("counterCount");
-      const currentCount = parseInt(counterCount?.textContent || "0");
-      const sessionCount = (session.allCounterPerspectives || []).length;
-      if (sessionCount !== currentCount) {
-        await renderSessionView();
+    if (!session?.active) return;
+
+    const historyLen = session.history?.length || 0;
+    const counterLen = (session.allCounterPerspectives || []).length;
+    const statsAnalyzed = session.stats?.analyzed || 0;
+
+    const hasNewData = (
+      historyLen !== _lastHistoryLen ||
+      counterLen !== _lastCounterLen ||
+      statsAnalyzed !== _lastStatsAnalyzed
+    );
+
+    if (hasNewData) {
+      _lastHistoryLen = historyLen;
+      _lastCounterLen = counterLen;
+      _lastStatsAnalyzed = statsAnalyzed;
+      await renderSessionView();
+    } else {
+      // Always keep stats current even without a full re-render
+      if (document.getElementById("statAnalyzed")) {
+        document.getElementById("statAnalyzed").textContent = session.stats?.analyzed || 0;
+        document.getElementById("statApproved").textContent = session.stats?.approved || 0;
+        document.getElementById("statSkipped").textContent = session.stats?.skipped || 0;
       }
-      // Always update stats
-      document.getElementById("statAnalyzed").textContent = session.stats?.analyzed || 0;
-      document.getElementById("statApproved").textContent = session.stats?.approved || 0;
-      document.getElementById("statSkipped").textContent = session.stats?.skipped || 0;
     }
-  }, 3000);
+  }, 2000);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -423,9 +351,43 @@ function getPerspectiveClass(perspective) {
 }
 
 // ── Event Listeners ──────────────────────────────────────────────────
-analyzeBtn.addEventListener("click", analyzePage);
 sessionToggle.addEventListener("click", toggleSession);
-retryBtn.addEventListener("click", analyzePage);
+
+if (editTopicBtn) {
+  editTopicBtn.addEventListener("click", () => {
+    topicNameEl.classList.add("hidden");
+    editTopicBtn.classList.add("hidden");
+    topicEditContainer.classList.remove("hidden");
+    document.getElementById("overrideTopicInput").value = topicNameEl.textContent !== "Unknown Topic" ? topicNameEl.textContent : "";
+    document.getElementById("overrideTopicInput").focus();
+  });
+}
+
+if (cancelTopicBtn) {
+  cancelTopicBtn.addEventListener("click", () => {
+    topicNameEl.classList.remove("hidden");
+    editTopicBtn.classList.remove("hidden");
+    topicEditContainer.classList.add("hidden");
+  });
+}
+
+if (saveTopicBtn) {
+  saveTopicBtn.addEventListener("click", async () => {
+    const newTopic = document.getElementById("overrideTopicInput").value.trim();
+    if (newTopic) {
+      const session = await getSession();
+      if (session) {
+        session.userTopic = newTopic;
+        session.topic = newTopic;
+        await updateSession(session);
+        await renderSessionView();
+      }
+    }
+    topicNameEl.classList.remove("hidden");
+    editTopicBtn.classList.remove("hidden");
+    topicEditContainer.classList.add("hidden");
+  });
+}
 
 // ── Initialize ───────────────────────────────────────────────────────
 async function init() {

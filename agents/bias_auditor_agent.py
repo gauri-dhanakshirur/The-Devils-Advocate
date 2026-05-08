@@ -33,14 +33,24 @@ class BiasAuditorAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="BiasAuditorAgent", system_prompt=SYSTEM_PROMPT)
 
-    def run(self, text: str, gatekeeper_topic: str) -> dict:
+    def run(self, text: str, gatekeeper_topic: str, session_topic: str = "") -> dict:
         # Calculate session-wide Bias Score (0-10) using mathematical vector clustering
         bias_score = vector_memory.calculate_bias_score()
 
         # Build context from previous memory
         past_topics = [item["metadata"]["topic"] for item in vector_memory.local_memory]
-        
+
+        # Anchor prompt to user-defined topic if provided
+        topic_anchor = ""
+        if session_topic:
+            topic_anchor = (
+                f"=== USER-DEFINED RESEARCH FOCUS ===\n"
+                f"'{session_topic}'\n"
+                f"Evaluate bias and summarize opinions relative to this specific topic.\n\n"
+            )
+
         prompt = (
+            f"{topic_anchor}"
             f"=== CURRENT TEXT ===\n{text[:4000]}\n\n"
             f"=== GATEKEEPER TOPIC ===\n{gatekeeper_topic}\n\n"
             f"=== PAST SESSION TOPICS ===\n{json.dumps(past_topics)}\n\n"
@@ -56,12 +66,15 @@ class BiasAuditorAgent(BaseAgent):
             logger.warning("Failed to parse BiasAuditor LLM response: %s", cleaned[:200])
             data = {
                 "opinions_summary": "Unable to summarize opinions.",
-                "research_theme": gatekeeper_topic
+                "research_theme": session_topic or gatekeeper_topic
             }
+
+        # If user defined a topic, use it as the canonical research theme
+        research_theme = session_topic if session_topic else data.get("research_theme", gatekeeper_topic)
 
         return {
             "cumulative_bias_score": bias_score,
-            "research_theme": data.get("research_theme", gatekeeper_topic),
+            "research_theme": research_theme,
             "opinions_summary": data.get("opinions_summary", "Unable to summarize."),
-            "feedback_prompt": f"Is '{data.get('research_theme', gatekeeper_topic)}' your intended research focus? (Thumbs Up/Down)"
+            "feedback_prompt": f"Is '{research_theme}' your intended research focus? (Thumbs Up/Down)"
         }

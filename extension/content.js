@@ -1,7 +1,7 @@
 // Devil's Advocate — Content Script
 // Extracts meaningful text from the current page for analysis
 
-function extractPageData() {
+function extractMetadata() {
   const title = document.title || "";
   const url = window.location.href || "";
   const domain = window.location.hostname || "";
@@ -14,6 +14,12 @@ function extractPageData() {
     .slice(0, 15)
     .map(el => el.innerText.trim())
     .filter(Boolean);
+
+  return { title, url, domain, metaDescription, headings };
+}
+
+function extractPageData() {
+  const meta = extractMetadata();
 
   // Try to find the main article content first
   let articleText = "";
@@ -52,11 +58,7 @@ function extractPageData() {
     .slice(0, 10000);
 
   return {
-    title,
-    url,
-    domain,
-    metaDescription,
-    headings,
+    ...meta,
     articleText
   };
 }
@@ -70,6 +72,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (e) {
       console.error("[DA Content] Extraction error:", e);
       sendResponse({ title: document.title, url: location.href, domain: location.hostname, metaDescription: "", headings: [], articleText: "" });
+    }
+  } else if (message.type === "EXTRACT_METADATA") {
+    try {
+      const data = extractMetadata();
+      sendResponse(data);
+    } catch (e) {
+      console.error("[DA Content] Metadata extraction error:", e);
+      sendResponse({ title: document.title, url: location.href, domain: location.hostname, metaDescription: "", headings: [] });
     }
   }
   return true; // Keep the message channel open for async response
