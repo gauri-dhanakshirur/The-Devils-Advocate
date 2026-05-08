@@ -393,3 +393,31 @@ body {
 /* ── Footer ──────────────────────────────────────────────────────── */
 .footer { background: var(--bg-secondary); border-top: 1px solid var(--border); padding: 18px 32px; display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
 .version { font-weight: 600; }
+
+/* ── Knowledge Nebula ───────────────────────────────────────────── */
+.nebula-section { margin-top: 24px; }
+.nebula-description { font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: 20px; }
+.nebula-controls { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.nebula-select { max-width: 350px; flex: 1; }
+.nebula-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.nebula-metric { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+.nebula-metric-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 4px; }
+.nebula-metric-value { font-size: 22px; font-weight: 800; }
+.nebula-metric-value.good { color: var(--success); }
+.nebula-metric-value.warn { color: var(--warning); }
+.nebula-metric-value.bad { color: var(--accent); }
+.nebula-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; padding: 10px 14px; background: var(--bg-tertiary); border-radius: 8px; font-size: 12px; color: var(--text-secondary); }
+.legend-chip { display: inline-flex; align-items: center; gap: 5px; }
+.legend-chip.page { color: #f59e0b; }
+.legend-chip.bridge { color: #10b981; }
+.legend-chip.ghost { color: #ef4444; }
+.legend-chip.edge { color: #8b5cf6; }
+.legend-chip.ghost-edge { color: rgba(239, 68, 68, 0.5); }
+.nebula-container { background: radial-gradient(ellipse at 50% 50%, rgba(139,92,246,0.06) 0%, var(--bg-primary) 70%); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: relative; min-height: 500px; }
+#nebulaGraph { width: 100%; height: 550px; }
+#nebulaGraph canvas { border-radius: 12px; }
+.nebula-empty { text-align: center; padding: 48px; color: var(--text-muted); font-size: 14px; }
+.nebula-tooltip { position: absolute; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 12px; color: var(--text-primary); max-width: 280px; pointer-events: none; z-index: 200; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+.nebula-tooltip .tt-label { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.nebula-tooltip .tt-type { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px; }
+.nebula-tooltip .tt-meta { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }

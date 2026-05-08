@@ -184,6 +184,34 @@
             <p class="page-subtitle">Bias trends and research patterns across all sessions.</p>
           </div>
           <div id="analyticsContent"></div>
+
+          <!-- Knowledge Nebula Section -->
+          <div class="section-card nebula-section">
+            <div class="section-card-title">Knowledge Nebula</div>
+            <p class="nebula-description">Interactive force-directed graph that maps the gravitational pull of your research bias. Tightly clustered nodes reveal echo chambers. Bridge nodes (green) connect opposing viewpoints. Ghost nodes (red, outer rim) represent missing counter-perspectives.</p>
+            <div class="nebula-controls">
+              <label class="form-label" for="nebulaSessionSelect">Select Session</label>
+              <select id="nebulaSessionSelect" class="form-input nebula-select"><option value="">— Choose a session —</option></select>
+              <button id="loadNebulaBtn" class="btn btn-primary btn-small">Launch Nebula</button>
+            </div>
+            <!-- Metrics bar -->
+            <div id="nebulaMetrics" class="nebula-metrics hidden"></div>
+            <!-- Legend -->
+            <div id="nebulaLegend" class="nebula-legend hidden">
+              <span class="legend-chip page">● Page Node</span>
+              <span class="legend-chip bridge">● Bridge Node</span>
+              <span class="legend-chip ghost">● Ghost (Counter-Perspective)</span>
+              <span class="legend-chip edge">— Semantic Similarity</span>
+              <span class="legend-chip ghost-edge">┄ Counter Link</span>
+            </div>
+            <!-- Graph container -->
+            <div id="nebulaContainer" class="nebula-container hidden">
+              <div id="nebulaGraph"></div>
+            </div>
+            <div id="nebulaEmpty" class="nebula-empty hidden">
+              <p>No session data to visualize. Analyze some pages first!</p>
+            </div>
+          </div>
         </div>
 
       </main>
@@ -217,6 +245,7 @@
     </div>
   </div>
 
+  <script src="https://unpkg.com/force-graph@1.47.2/dist/force-graph.min.js"></script>
   <script src="/static/webapp.js"></script>
 </body>
 </html>

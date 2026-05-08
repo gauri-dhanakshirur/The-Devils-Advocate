@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
         )
     else:
         logger.info("✅ All API keys loaded successfully.")
+    logger.info("🦞 OpenClaw gateway: %s (model: %s)", settings.OPENCLAW_BASE_URL, settings.OPENCLAW_MODEL)
     logger.info("🚀 Devil's Advocate Gateway running on http://%s:%s", settings.HOST, settings.PORT)
     yield
 
@@ -152,7 +153,7 @@ async def health_check():
         status="operational" if not missing else "degraded",
         version="1.0.0",
         keys_configured={
-            "groq": "GROQ_API_KEY" not in missing,
+            "openclaw": "OPENCLAW_BASE_URL" not in missing,
             "serpapi": "SERPAPI_API_KEY" not in missing,
             "pinecone": bool(settings.PINECONE_API_KEY),
         },
@@ -171,10 +172,10 @@ async def analyze(request: AnalyzeRequest):
     5. **Orchestrator** — final synthesis
     """
     missing = settings.validate()
-    if "GROQ_API_KEY" in missing:
+    if "OPENCLAW_BASE_URL" in missing or "OPENCLAW_TOKEN" in missing:
         raise HTTPException(
             status_code=503,
-            detail="GROQ_API_KEY is not configured. Cannot run analysis.",
+            detail="OpenClaw gateway is not configured. Cannot run analysis.",
         )
 
     # Sanitize input — truncate extremely long text to avoid LLM token limits

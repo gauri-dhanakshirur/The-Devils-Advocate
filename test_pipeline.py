@@ -56,16 +56,16 @@ def test_config():
     
     assert_test(settings.HOST == "0.0.0.0", "HOST defaults to 0.0.0.0")
     assert_test(settings.PORT == 8000, "PORT defaults to 8000")
-    assert_test(settings.LLM_MODEL == "llama-3.1-8b-instant", "LLM model configured")
+    assert_test(settings.OPENCLAW_MODEL == "openclaw/main", "OpenClaw model configured")
     assert_test(settings.LLM_MAX_TOKENS == 1024, "Max tokens set")
     assert_test(0 < settings.LLM_TEMPERATURE < 1, "Temperature in valid range")
     
     missing = settings.validate()
-    if "GROQ_API_KEY" in missing:
-        warn("GROQ_API_KEY not set — LLM tests will be skipped")
+    if "OPENCLAW_BASE_URL" in missing or "OPENCLAW_TOKEN" in missing:
+        warn("OpenClaw gateway not configured — LLM tests will be skipped")
         return False
     else:
-        ok("GROQ_API_KEY is configured")
+        ok("OpenClaw gateway is configured")
     
     return True
 

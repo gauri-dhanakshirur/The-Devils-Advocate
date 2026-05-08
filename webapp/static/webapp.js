@@ -409,6 +409,8 @@ function closeCitationModal() {
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────
+let nebulaGraph = null;
+
 async function loadAnalytics() {
   const el = $("analyticsContent");
   if (!el) return;
@@ -426,11 +428,191 @@ async function loadAnalytics() {
           <div><div class="detail-stat-label">TOTAL TIME</div><div class="detail-stat-value">${formatDuration(stats.total_time_seconds)}</div></div>
           <div><div class="detail-stat-label">AVG BIAS</div><div class="detail-stat-value bias-highlight">${stats.avg_bias_score}/10</div></div>
         </div>
-      </div>
-      <div class="empty-state"><h3>More Analytics Coming Soon</h3><p>Bias trends and topic clustering will be available in a future update.</p></div>`;
+      </div>`;
   } catch (err) {
     el.innerHTML = `<div class="empty-state"><h3>Error</h3><p>${escapeHtml(err.message)}</p></div>`;
   }
+
+  // Populate the nebula session selector
+  await populateNebulaSessionSelect();
+}
+
+async function populateNebulaSessionSelect() {
+  const sel = $("nebulaSessionSelect");
+  if (!sel) return;
+  try {
+    const res = await fetch(`${API_BASE}/webapp/sessions?limit=50`, { headers: authHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    sel.innerHTML = '<option value="">— Choose a session —</option>';
+    for (const s of data.sessions) {
+      const topic = s.user_topic || s.topic || "Untitled";
+      const date  = new Date(s.started_at).toLocaleDateString("en-US", { month:"short", day:"numeric" });
+      sel.innerHTML += `<option value="${s.session_id}">${escapeHtml(topic)} (${date})</option>`;
+    }
+  } catch (e) {
+    console.error("Failed to populate nebula sessions:", e);
+  }
+}
+
+async function launchNebula() {
+  const sessionId = $("nebulaSessionSelect")?.value;
+  if (!sessionId) return;
+
+  const container = $("nebulaContainer");
+  const metricsEl = $("nebulaMetrics");
+  const legendEl  = $("nebulaLegend");
+  const emptyEl   = $("nebulaEmpty");
+  const graphEl   = $("nebulaGraph");
+
+  // Reset
+  container.classList.add("hidden");
+  metricsEl.classList.add("hidden");
+  legendEl.classList.add("hidden");
+  emptyEl.classList.add("hidden");
+  graphEl.innerHTML = '';
+
+  try {
+    const res = await fetch(`${API_BASE}/webapp/nebula/${sessionId}`, { headers: authHeaders() });
+    if (res.status === 401) { clearToken(); showAuth(); return; }
+    if (!res.ok) throw new Error(`Server error ${res.status}`);
+    const nebula = await res.json();
+
+    if (!nebula.nodes || nebula.nodes.length === 0) {
+      emptyEl.classList.remove("hidden");
+      return;
+    }
+
+    // Render metrics
+    const m = nebula.metrics;
+    metricsEl.innerHTML = `
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">NODES</div>
+        <div class="nebula-metric-value">${m.total_nodes}</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">EDGES</div>
+        <div class="nebula-metric-value">${m.total_edges}</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">DIAMETER</div>
+        <div class="nebula-metric-value ${m.diameter >= 3 ? 'good' : m.diameter >= 1 ? 'warn' : 'bad'}">${m.diameter}</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">BRIDGES</div>
+        <div class="nebula-metric-value good">${m.bridge_nodes}</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">GHOST NODES</div>
+        <div class="nebula-metric-value bad">${m.ghost_nodes}</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">EXPOSURE</div>
+        <div class="nebula-metric-value ${m.exposure_score >= 50 ? 'good' : m.exposure_score >= 20 ? 'warn' : 'bad'}">${m.exposure_score}%</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">ECHO RISK</div>
+        <div class="nebula-metric-value ${m.echo_chamber_risk >= 60 ? 'bad' : m.echo_chamber_risk >= 30 ? 'warn' : 'good'}">${m.echo_chamber_risk}%</div>
+      </div>
+      <div class="nebula-metric">
+        <div class="nebula-metric-label">BIAS SCORE</div>
+        <div class="nebula-metric-value ${m.session_bias_score >= 7 ? 'bad' : m.session_bias_score >= 4 ? 'warn' : 'good'}">${m.session_bias_score}</div>
+      </div>
+    `;
+    metricsEl.classList.remove("hidden");
+    legendEl.classList.remove("hidden");
+    container.classList.remove("hidden");
+
+    // Render force graph
+    renderNebulaGraph(nebula, graphEl);
+
+  } catch (err) {
+    emptyEl.innerHTML = `<p>Error: ${escapeHtml(err.message)}</p>`;
+    emptyEl.classList.remove("hidden");
+  }
+}
+
+function renderNebulaGraph(nebula, containerEl) {
+  if (nebulaGraph) {
+    nebulaGraph._destructor && nebulaGraph._destructor();
+    nebulaGraph = null;
+  }
+  containerEl.innerHTML = '';
+
+  const width  = containerEl.clientWidth || 800;
+  const height = 550;
+
+  const graphData = {
+    nodes: nebula.nodes.map(n => ({ ...n })),
+    links: nebula.links.map(l => ({ ...l }))
+  };
+
+  nebulaGraph = ForceGraph()
+    (containerEl)
+    .width(width)
+    .height(height)
+    .graphData(graphData)
+    .backgroundColor('transparent')
+    .nodeLabel(n => '')
+    .nodeVal(n => n.val || 6)
+    .nodeColor(n => n.color || '#f59e0b')
+    .nodeCanvasObjectMode(() => 'after')
+    .nodeCanvasObject((node, ctx, globalScale) => {
+      // Draw label
+      const label = node.label || '';
+      const fontSize = Math.max(10 / globalScale, 3);
+      ctx.font = `${fontSize}px Inter, sans-serif`;
+      ctx.fillStyle = node.type === 'ghost' ? 'rgba(239,68,68,0.8)' : 'rgba(232,232,240,0.85)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const truncLabel = label.length > 25 ? label.slice(0, 22) + '…' : label;
+      ctx.fillText(truncLabel, node.x, node.y + (node.val || 6) / globalScale + 2);
+
+      // Draw bridge indicator
+      if (node.is_bridge) {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2 / globalScale;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, (node.val || 6) / globalScale + 3, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+
+      // Draw ghost dashed ring
+      if (node.type === 'ghost') {
+        ctx.strokeStyle = 'rgba(239,68,68,0.5)';
+        ctx.lineWidth = 1.5 / globalScale;
+        ctx.setLineDash([3 / globalScale, 3 / globalScale]);
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, (node.val || 6) / globalScale + 4, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    })
+    .linkWidth(l => l.width || 1)
+    .linkColor(l => l.color || 'rgba(139,92,246,0.3)')
+    .linkLineDash(l => l.dashed ? [4, 4] : null)
+    .onNodeClick((node) => {
+      if (node.type === 'ghost' && node.sources && node.sources.length > 0) {
+        window.open(node.sources[0].url, '_blank');
+      } else if (node.url) {
+        window.open(node.url, '_blank');
+      }
+    })
+    .onNodeHover((node) => {
+      containerEl.style.cursor = node ? 'pointer' : 'default';
+    })
+    .d3Force('charge').strength(-120);
+
+  // Warm up simulation
+  nebulaGraph.d3Force('link').distance(l => {
+    const sim = l.similarity || 0.5;
+    return 150 * (1 - sim);
+  });
+
+  // Cooldown after settling
+  setTimeout(() => {
+    if (nebulaGraph) nebulaGraph.cooldownTicks(0);
+  }, 5000);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────
@@ -489,6 +671,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("explainerToggle")?.addEventListener("click", () => {
     $("explainerBody")?.classList.toggle("open");
     document.querySelector(".explainer-chevron")?.classList.toggle("open");
+  });
+
+  // Nebula controls
+  $("loadNebulaBtn")?.addEventListener("click", launchNebula);
+  $("nebulaSessionSelect")?.addEventListener("change", () => {
+    // Reset nebula when session changes
+    $("nebulaContainer")?.classList.add("hidden");
+    $("nebulaMetrics")?.classList.add("hidden");
+    $("nebulaLegend")?.classList.add("hidden");
+    $("nebulaEmpty")?.classList.add("hidden");
   });
 
   // Check existing token

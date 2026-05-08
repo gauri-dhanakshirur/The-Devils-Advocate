@@ -12,15 +12,26 @@ load_dotenv()
 class Settings:
     """Central configuration sourced from environment variables."""
 
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     SERPAPI_API_KEY: str = os.getenv("SERPAPI_API_KEY", "")
     PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY", "")
 
     HOST: str = os.getenv("HOST", "0.0.0.0")
     PORT: int = int(os.getenv("PORT", "8000"))
 
-    # Groq model settings
-    LLM_MODEL: str = "llama-3.1-8b-instant"
+    # ── OpenClaw Gateway ────────────────────────────────────────────
+    # OpenClaw is the sole agentic runtime. It manages the LLM provider
+    # (Groq, OpenAI, Anthropic, etc.) via its own config at ~/.openclaw/
+    OPENCLAW_BASE_URL: str = os.getenv(
+        "OPENCLAW_BASE_URL", "http://127.0.0.1:18789/v1"
+    )
+    OPENCLAW_TOKEN: str = os.getenv(
+        "OPENCLAW_TOKEN", "devils-advocate-token"
+    )
+    OPENCLAW_MODEL: str = os.getenv(
+        "OPENCLAW_MODEL", "openclaw/main"
+    )
+
+    # Model parameters (passed through OpenClaw to the underlying LLM)
     LLM_TEMPERATURE: float = 0.3
     LLM_MAX_TOKENS: int = 1024
 
@@ -28,8 +39,10 @@ class Settings:
     def validate(cls) -> list[str]:
         """Return a list of missing critical keys."""
         missing = []
-        if not cls.GROQ_API_KEY or cls.GROQ_API_KEY == "your_groq_key_here":
-            missing.append("GROQ_API_KEY")
+        if not cls.OPENCLAW_BASE_URL:
+            missing.append("OPENCLAW_BASE_URL")
+        if not cls.OPENCLAW_TOKEN:
+            missing.append("OPENCLAW_TOKEN")
         if not cls.SERPAPI_API_KEY or cls.SERPAPI_API_KEY == "your_serpapi_key_here":
             missing.append("SERPAPI_API_KEY")
         return missing

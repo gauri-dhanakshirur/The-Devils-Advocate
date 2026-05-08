@@ -266,3 +266,37 @@ async def get_global_stats(current_user: dict = Depends(get_current_user)):
         return db.get_global_stats_for_user(current_user["email"])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nebula/{session_id}")
+async def get_nebula(
+    session_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Knowledge Nebula — Interactive graph visualization of session bias.
+    Computes nodes, edges, centrality, ghost nodes, and graph metrics
+    from the session's page vectors and counter-perspectives.
+    """
+    from nebula_engine import compute_nebula
+
+    try:
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if session.get("user_email") and session["user_email"] != current_user["email"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        pages = db.get_session_pages(session_id)
+        counter_perspectives = db.get_session_counter_perspectives(session_id)
+        bias_score = session.get("bias_score", 5.0)
+
+        nebula = compute_nebula(pages, counter_perspectives, bias_score)
+        return nebula
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Nebula computation failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Nebula engine error: {e}")
