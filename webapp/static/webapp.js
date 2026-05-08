@@ -410,6 +410,7 @@ function closeCitationModal() {
 
 // ── Analytics ─────────────────────────────────────────────────────────
 let nebulaGraph = null;
+let nebulaWs = null;
 
 async function loadAnalytics() {
   const el = $("analyticsContent");
@@ -472,59 +473,75 @@ async function launchNebula() {
   emptyEl.classList.add("hidden");
   graphEl.innerHTML = '';
 
+  if (nebulaWs) {
+    nebulaWs.close();
+    nebulaWs = null;
+  }
+
   try {
-    const res = await fetch(`${API_BASE}/webapp/nebula/${sessionId}`, { headers: authHeaders() });
-    if (res.status === 401) { clearToken(); showAuth(); return; }
-    if (!res.ok) throw new Error(`Server error ${res.status}`);
-    const nebula = await res.json();
+    const wsUrl = API_BASE.replace(/^http/, "ws") + `/webapp/ws/nebula/${sessionId}`;
+    nebulaWs = new WebSocket(wsUrl);
 
-    if (!nebula.nodes || nebula.nodes.length === 0) {
+    nebulaWs.onmessage = (event) => {
+      try {
+        const nebula = JSON.parse(event.data);
+        if (!nebula.nodes || nebula.nodes.length === 0) {
+          emptyEl.classList.remove("hidden");
+          return;
+        }
+
+        // Render metrics
+        const m = nebula.metrics;
+        metricsEl.innerHTML = `
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">NODES</div>
+            <div class="nebula-metric-value">${m.total_nodes}</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">EDGES</div>
+            <div class="nebula-metric-value">${m.total_edges}</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">DIAMETER</div>
+            <div class="nebula-metric-value ${m.diameter >= 3 ? 'good' : m.diameter >= 1 ? 'warn' : 'bad'}">${m.diameter}</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">BRIDGES</div>
+            <div class="nebula-metric-value good">${m.bridge_nodes}</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">GHOST NODES</div>
+            <div class="nebula-metric-value bad">${m.ghost_nodes}</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">EXPOSURE</div>
+            <div class="nebula-metric-value ${m.exposure_score >= 50 ? 'good' : m.exposure_score >= 20 ? 'warn' : 'bad'}">${m.exposure_score}%</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">ECHO RISK</div>
+            <div class="nebula-metric-value ${m.echo_chamber_risk >= 60 ? 'bad' : m.echo_chamber_risk >= 30 ? 'warn' : 'good'}">${m.echo_chamber_risk}%</div>
+          </div>
+          <div class="nebula-metric">
+            <div class="nebula-metric-label">BIAS SCORE</div>
+            <div class="nebula-metric-value ${m.session_bias_score >= 7 ? 'bad' : m.session_bias_score >= 4 ? 'warn' : 'good'}">${m.session_bias_score}</div>
+          </div>
+        `;
+        metricsEl.classList.remove("hidden");
+        legendEl.classList.remove("hidden");
+        container.classList.remove("hidden");
+
+        // Render force graph
+        renderNebulaGraph(nebula, graphEl);
+      } catch (e) {
+        console.error("Failed to parse Nebula update", e);
+      }
+    };
+
+    nebulaWs.onerror = (err) => {
+      console.error("WebSocket error", err);
+      emptyEl.innerHTML = `<p>WebSocket Error. Check console.</p>`;
       emptyEl.classList.remove("hidden");
-      return;
-    }
-
-    // Render metrics
-    const m = nebula.metrics;
-    metricsEl.innerHTML = `
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">NODES</div>
-        <div class="nebula-metric-value">${m.total_nodes}</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">EDGES</div>
-        <div class="nebula-metric-value">${m.total_edges}</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">DIAMETER</div>
-        <div class="nebula-metric-value ${m.diameter >= 3 ? 'good' : m.diameter >= 1 ? 'warn' : 'bad'}">${m.diameter}</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">BRIDGES</div>
-        <div class="nebula-metric-value good">${m.bridge_nodes}</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">GHOST NODES</div>
-        <div class="nebula-metric-value bad">${m.ghost_nodes}</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">EXPOSURE</div>
-        <div class="nebula-metric-value ${m.exposure_score >= 50 ? 'good' : m.exposure_score >= 20 ? 'warn' : 'bad'}">${m.exposure_score}%</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">ECHO RISK</div>
-        <div class="nebula-metric-value ${m.echo_chamber_risk >= 60 ? 'bad' : m.echo_chamber_risk >= 30 ? 'warn' : 'good'}">${m.echo_chamber_risk}%</div>
-      </div>
-      <div class="nebula-metric">
-        <div class="nebula-metric-label">BIAS SCORE</div>
-        <div class="nebula-metric-value ${m.session_bias_score >= 7 ? 'bad' : m.session_bias_score >= 4 ? 'warn' : 'good'}">${m.session_bias_score}</div>
-      </div>
-    `;
-    metricsEl.classList.remove("hidden");
-    legendEl.classList.remove("hidden");
-    container.classList.remove("hidden");
-
-    // Render force graph
-    renderNebulaGraph(nebula, graphEl);
+    };
 
   } catch (err) {
     emptyEl.innerHTML = `<p>Error: ${escapeHtml(err.message)}</p>`;

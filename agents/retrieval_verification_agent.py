@@ -138,6 +138,22 @@ class RetrievalVerificationAgent(BaseAgent):
                 })
             return {"curated_links": fallback}
 
+    def _ghost_scrape(self, url: str) -> str:
+        """Command OpenClaw to use its browser to fetch and summarize the link."""
+        logger.info(f"Ghost scraping (OpenClaw browser fetching): {url}")
+        prompt = f"Use your browser tool to navigate to {url}, read its contents, and provide a concise 2-3 sentence summary of the main arguments presented. If you cannot access it, just say so."
+        try:
+            # Temporarily swap system prompt for ghost scraping to avoid JSON constraints
+            original_prompt = self.system_prompt
+            self.system_prompt = "You are an autonomous research agent with browser access. You must use your browser tool to read the requested URL."
+            raw = self._call_llm(prompt, temperature=0.3)
+            self.system_prompt = original_prompt
+            return raw.strip()
+        except Exception as e:
+            logger.error(f"Ghost scrape failed for {url}: {e}")
+            self.system_prompt = original_prompt
+            return "Background fetch failed."
+
     def run(self, counter_opinion_output: dict, topic: str = "") -> dict:
         # Check Guardrail from Agent 3
         guardrail = counter_opinion_output.get("null_guardrail", "")
@@ -163,5 +179,14 @@ class RetrievalVerificationAgent(BaseAgent):
             return {"curated_links": [], "note": "No search results found.", "search_queries_used": queries}
 
         ranked = self._rank_results(all_results, counter_topics, topic)
+        
+        # Ghost Scrape the top links
+        for link in ranked.get("curated_links", []):
+            url = link.get("url")
+            if url and url != "#":
+                ghost_summary = self._ghost_scrape(url)
+                if ghost_summary and "failed" not in ghost_summary.lower() and "cannot access" not in ghost_summary.lower():
+                    link["summary"] = ghost_summary
+
         ranked["search_queries_used"] = queries
         return ranked

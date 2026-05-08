@@ -4,8 +4,8 @@ FastAPI routes for the web interface to view session history.
 """
 
 import logging
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Depends, Header
+from typing import Optional, Dict, List
+from fastapi import APIRouter, HTTPException, Query, Depends, Header, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from database import db
@@ -17,6 +17,37 @@ from auth import (
 logger = logging.getLogger("webapp_routes")
 
 router = APIRouter(prefix="/webapp", tags=["Webapp"])
+
+# ── WebSocket Manager ────────────────────────────────────────────────
+class ConnectionManager:
+    def __init__(self):
+        # Maps session_id to a list of active WebSocket connections
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, session_id: str):
+        await websocket.accept()
+        if session_id not in self.active_connections:
+            self.active_connections[session_id] = []
+        self.active_connections[session_id].append(websocket)
+        logger.info(f"WebSocket connected for session: {session_id}")
+
+    def disconnect(self, websocket: WebSocket, session_id: str):
+        if session_id in self.active_connections:
+            self.active_connections[session_id].remove(websocket)
+            if not self.active_connections[session_id]:
+                del self.active_connections[session_id]
+        logger.info(f"WebSocket disconnected for session: {session_id}")
+
+    async def broadcast_nebula(self, session_id: str, nebula_data: dict):
+        if session_id in self.active_connections:
+            for connection in self.active_connections[session_id]:
+                try:
+                    await connection.send_json(nebula_data)
+                except Exception as e:
+                    logger.error(f"WebSocket broadcast error: {e}")
+
+manager = ConnectionManager()
+
 
 
 # ── Auth Routes ──────────────────────────────────────────────────────
@@ -155,6 +186,18 @@ async def sync_session(
             )
         for source in request.sources:
             db.add_source(request.session_id, source)
+
+        # Broadcast the updated nebula graph via WebSocket
+        try:
+            from nebula_engine import compute_nebula
+            updated_pages = db.get_session_pages(request.session_id)
+            updated_cps = db.get_session_counter_perspectives(request.session_id)
+            nebula = compute_nebula(updated_pages, updated_cps, request.bias_score)
+            # Use asyncio.create_task or await if safe
+            import asyncio
+            asyncio.create_task(manager.broadcast_nebula(request.session_id, nebula))
+        except Exception as e:
+            logger.error(f"Failed to broadcast nebula update: {e}")
 
         logger.info("Session %s synced (user: %s)", request.session_id, user_email or "anonymous")
         return {"success": True, "session_id": request.session_id}
@@ -300,3 +343,30 @@ async def get_nebula(
     except Exception as e:
         logger.error("Nebula computation failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Nebula engine error: {e}")
+
+@router.websocket("/ws/nebula/{session_id}")
+async def websocket_nebula_endpoint(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for real-time Knowledge Nebula updates."""
+    await manager.connect(websocket, session_id)
+    try:
+        # Send initial state
+        from nebula_engine import compute_nebula
+        session = db.get_session(session_id)
+        if session:
+            pages = db.get_session_pages(session_id)
+            counter_perspectives = db.get_session_counter_perspectives(session_id)
+            bias_score = session.get("bias_score", 5.0)
+            nebula = compute_nebula(pages, counter_perspectives, bias_score)
+            await websocket.send_json(nebula)
+        
+        while True:
+            # Keep connection alive and wait for client messages if any
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, session_id)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket, session_id)
+
