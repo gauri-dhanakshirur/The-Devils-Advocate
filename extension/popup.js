@@ -1,4 +1,4 @@
-import { getSession, startSession, stopSession, updateSession, addPageResult } from "./storage.js";
+import { getSession, startSession, updateSession, addPageResult, getAuthToken, setAuthToken, clearAuthToken, getAuthUser, setAuthUser, clearAuthUser } from "./storage.js";
 
 // ── Constants ────────────────────────────────────────────────────────
 const API_BASE = "http://localhost:8000";
@@ -233,14 +233,20 @@ async function toggleSession() {
   const session = await getSession();
 
   if (session?.active) {
-    // End session
-    await stopSession();
-    sessionToggle.classList.remove("active");
-    sessionToggle.querySelector(".btn-text").textContent = "Start Research Session";
-    sessionBar.classList.add("hidden");
-    resultsContainer.classList.add("hidden");
-    emptyState.classList.remove("hidden");
-    if (durationTimer) clearInterval(durationTimer);
+    // End session — delegate to background service worker so the fetch
+    // isn't killed when the popup closes
+    sessionToggle.disabled = true;
+    sessionToggle.querySelector(".btn-text").textContent = "Saving...";
+
+    chrome.runtime.sendMessage({ type: "END_SESSION", session }, () => {
+      sessionToggle.disabled = false;
+      sessionToggle.classList.remove("active");
+      sessionToggle.querySelector(".btn-text").textContent = "Start Research Session";
+      sessionBar.classList.add("hidden");
+      resultsContainer.classList.add("hidden");
+      emptyState.classList.remove("hidden");
+      if (durationTimer) clearInterval(durationTimer);
+    });
   } else {
     // Start session
     const topic = sessionTopicInput ? sessionTopicInput.value.trim() : "";
@@ -353,6 +359,102 @@ function getPerspectiveClass(perspective) {
 // ── Event Listeners ──────────────────────────────────────────────────
 sessionToggle.addEventListener("click", toggleSession);
 
+// View History button — opens the webapp in a new tab
+const viewHistoryBtn = document.getElementById("viewHistoryBtn");
+if (viewHistoryBtn) {
+  viewHistoryBtn.addEventListener("click", () => {
+    chrome.tabs.create({ url: "http://localhost:8000/history" });
+  });
+}
+
+// ── Extension Auth UI ─────────────────────────────────────────────────
+const API_BASE_AUTH = "http://localhost:8000";
+
+async function refreshAuthUI() {
+  const user = await getAuthUser();
+  const accountBanner = document.getElementById("accountBanner");
+  const userBar        = document.getElementById("userBar");
+  const userBarEmail   = document.getElementById("userBarEmail");
+
+  if (user) {
+    accountBanner?.classList.add("hidden");
+    userBar?.classList.remove("hidden");
+    if (userBarEmail) userBarEmail.textContent = user.email || user.name || "Signed in";
+  } else {
+    accountBanner?.classList.remove("hidden");
+    userBar?.classList.add("hidden");
+  }
+}
+
+document.getElementById("openLoginBtn")?.addEventListener("click", () => {
+  document.getElementById("loginPanel")?.classList.remove("hidden");
+  document.getElementById("accountBanner")?.classList.add("hidden");
+});
+
+document.getElementById("closeLoginBtn")?.addEventListener("click", () => {
+  document.getElementById("loginPanel")?.classList.add("hidden");
+  document.getElementById("accountBanner")?.classList.remove("hidden");
+  document.getElementById("extLoginError")?.classList.add("hidden");
+});
+
+document.getElementById("extLoginBtn")?.addEventListener("click", async () => {
+  const email    = document.getElementById("extEmail")?.value.trim();
+  const password = document.getElementById("extPassword")?.value;
+  const errEl    = document.getElementById("extLoginError");
+  const btn      = document.getElementById("extLoginBtn");
+
+  if (!email || !password) {
+    if (errEl) { errEl.textContent = "Enter email and password."; errEl.classList.remove("hidden"); }
+    return;
+  }
+
+  btn.textContent = "Signing in…"; btn.disabled = true;
+  try {
+    const res  = await fetch(`${API_BASE_AUTH}/webapp/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (errEl) { errEl.textContent = data.detail || "Login failed."; errEl.classList.remove("hidden"); }
+      return;
+    }
+
+    await setAuthToken(data.access_token);
+
+    // Fetch user info
+    const meRes = await fetch(`${API_BASE_AUTH}/webapp/auth/me`, {
+      headers: { "Authorization": `Bearer ${data.access_token}` }
+    });
+    if (meRes.ok) await setAuthUser(await meRes.json());
+
+    document.getElementById("loginPanel")?.classList.add("hidden");
+    errEl?.classList.add("hidden");
+    await refreshAuthUI();
+
+    // Re-sync current session with user token if one is active
+    const session = await getSession();
+    if (session) chrome.runtime.sendMessage({ type: "SYNC_SESSION" });
+
+  } catch {
+    if (errEl) { errEl.textContent = "Cannot reach server."; errEl.classList.remove("hidden"); }
+  } finally {
+    btn.textContent = "Sign In"; btn.disabled = false;
+  }
+});
+
+document.getElementById("extLogoutBtn")?.addEventListener("click", async () => {
+  await clearAuthToken();
+  await clearAuthUser();
+  await refreshAuthUI();
+});
+
+document.getElementById("extOpenRegister")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: "http://localhost:8000/history" });
+});
+
 if (editTopicBtn) {
   editTopicBtn.addEventListener("click", () => {
     topicNameEl.classList.add("hidden");
@@ -393,6 +495,7 @@ if (saveTopicBtn) {
 async function init() {
   await checkServer();
   await restoreState();
+  await refreshAuthUI();
   startAutoRefresh();
   setInterval(checkServer, 10000);
 }

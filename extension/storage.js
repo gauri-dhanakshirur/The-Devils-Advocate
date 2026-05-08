@@ -8,6 +8,47 @@ export async function getSession() {
   }
 }
 
+// ── Auth token storage ───────────────────────────────────────────────
+export async function getAuthToken() {
+  try {
+    const data = await chrome.storage.local.get("da_auth_token");
+    return data.da_auth_token || null;
+  } catch { return null; }
+}
+
+export async function setAuthToken(token) {
+  try {
+    await chrome.storage.local.set({ da_auth_token: token });
+  } catch (e) {
+    console.error("[DA Storage] Failed to save auth token:", e);
+  }
+}
+
+export async function clearAuthToken() {
+  try {
+    await chrome.storage.local.remove("da_auth_token");
+  } catch {}
+}
+
+export async function getAuthUser() {
+  try {
+    const data = await chrome.storage.local.get("da_auth_user");
+    return data.da_auth_user || null;
+  } catch { return null; }
+}
+
+export async function setAuthUser(user) {
+  try {
+    await chrome.storage.local.set({ da_auth_user: user });
+  } catch {}
+}
+
+export async function clearAuthUser() {
+  try {
+    await chrome.storage.local.remove("da_auth_user");
+  } catch {}
+}
+
 export async function startSession(topic) {
   const session = {
     active: true,

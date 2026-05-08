@@ -27,12 +27,46 @@
       <span>Backend offline — start server with <code>python main.py</code></span>
     </div>
 
+    <!-- Account Banner (shown when not logged in) -->
+    <div id="accountBanner" class="account-banner hidden">
+      <span>Sign in to save sessions to your history.</span>
+      <button id="openLoginBtn" class="btn-link">Sign in</button>
+    </div>
+
+    <!-- Login Panel (inline in popup) -->
+    <div id="loginPanel" class="login-panel hidden">
+      <div class="login-panel-header">
+        <span>Sign in to Devil's Advocate</span>
+        <button id="closeLoginBtn" class="btn-icon">✕</button>
+      </div>
+      <div class="form-row">
+        <input type="email" id="extEmail" class="topic-input" placeholder="Email" />
+      </div>
+      <div class="form-row">
+        <input type="password" id="extPassword" class="topic-input" placeholder="Password" />
+      </div>
+      <div id="extLoginError" class="ext-login-error hidden"></div>
+      <button id="extLoginBtn" class="btn btn-primary" style="width:100%">Sign In</button>
+      <p style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px">
+        No account? <a href="#" id="extOpenRegister" style="color:var(--accent-light)">Create one in the webapp</a>
+      </p>
+    </div>
+
+    <!-- Logged-in user bar -->
+    <div id="userBar" class="user-bar hidden">
+      <span id="userBarEmail" class="user-bar-email"></span>
+      <button id="extLogoutBtn" class="btn-link">Sign out</button>
+    </div>
+
     <!-- Session Controls -->
     <div class="controls">
       <div id="startSessionContainer" class="start-session-container">
         <input type="text" id="sessionTopicInput" class="topic-input" placeholder="Enter research topic (optional)" />
         <button id="sessionToggle" class="btn btn-primary" disabled>
           <span class="btn-text">Start Research Session</span>
+        </button>
+        <button id="viewHistoryBtn" class="btn btn-secondary" style="margin-top: 8px; width: 100%;">
+          View Research History
         </button>
       </div>
     </div>

@@ -1,6 +1,64 @@
-import { getSession, updateSession, addActivity, addPageResult } from "./storage.js";
+import { getSession, updateSession, addActivity, addPageResult, getAuthToken } from "./storage.js";
 
 const API_BASE = "http://localhost:8000";
+
+// ── Sync session to backend ──────────────────────────────────────────
+async function syncSessionToBackend(session) {
+  try {
+    const token = await getAuthToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const payload = {
+      session_id: session.sessionId,
+      topic: session.latestTopic || session.topic || "",
+      user_topic: session.userTopic || "",
+      started_at: session.startedAt,
+      bias_score: session.latestBiasScore || 5.0,
+      opinions_summary: session.latestOpinionsSummary || "",
+      guardrail_triggered: session.guardrailTriggered || false,
+      stats: session.stats || {},
+      pages: (session.history || []).map(h => ({
+        url: h.url, title: h.title, topic: h.topic,
+        biasScore: h.biasScore, timestamp: h.timestamp
+      })),
+      counter_perspectives: (session.allCounterPerspectives || []).map(cp => ({
+        topic: cp.topic, viewpoint: cp.viewpoint,
+        sources: (cp.sources || []).map(s => ({
+          url: s.url, title: s.title, summary: s.summary,
+          perspective: s.perspective, credibility: s.credibility
+        }))
+      })),
+      sources: (session.allSources || []).map(s => ({
+        url: s.url, title: s.title, summary: s.summary,
+        perspective: s.perspective, credibility: s.credibility
+      }))
+    };
+
+    const res = await fetch(`${API_BASE}/webapp/sync-session`, {
+      method: "POST", headers, body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      console.log("[DA] Session synced to webapp backend");
+    } else {
+      console.error("[DA] Sync failed:", res.status);
+    }
+  } catch (e) {
+    console.error("[DA] Sync to backend failed:", e);
+  }
+}
+
+async function endSessionOnBackend(sessionId) {
+  try {
+    const token = await getAuthToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    await fetch(`${API_BASE}/webapp/end-session/${sessionId}`, { method: "POST", headers });
+  } catch (e) {
+    console.error("[DA] End session on backend failed:", e);
+  }
+}
 
 // ── Auto-analyze on tab update (only if session is active) ──────────
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -193,6 +251,10 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         title: page.title || tab.url,
         reason: `Bias: ${data.mirror?.cumulative_bias_score ?? "N/A"}/10 | ${(data.counter_perspectives || []).length} counter-perspectives`
       });
+
+      // Live-sync to webapp after every successful analysis
+      const latestSession = await getSession();
+      if (latestSession) await syncSessionToBackend(latestSession);
     }
 
     console.log("[DA] Analysis complete for:", tab.url);
@@ -210,7 +272,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[DA] Devil's Advocate extension installed");
 });
-
 // ── Analyze Active Tab on Session Start ──────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "ANALYZE_ACTIVE_TAB") {
@@ -284,10 +345,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await addPageResult(data, page.title || tab.url, tab.url);
           const s2 = await getSession();
           if (s2) { s2.stats.analyzed++; s2.stats.approved++; await updateSession(s2); }
+          // Live-sync to webapp after first page
+          await syncSessionToBackend(s2);
           console.log("[DA] Active tab analyzed on session start:", tab.url);
         }
       } catch (err) {
         console.error("[DA] Active tab analysis failed:", err);
+      }
+    })();
+    return true;
+  }
+});
+
+// ── End Session + Final Sync (called from popup via message) ─────────
+// The popup is a short-lived context — it gets killed before async fetches
+// complete. So we handle the end-session sync here in the persistent
+// service worker instead.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "END_SESSION") {
+    (async () => {
+      try {
+        const session = message.session;
+        if (!session) return;
+
+        // Sync full data first, then mark as ended
+        await syncSessionToBackend(session);
+        await endSessionOnBackend(session.sessionId);
+
+        // Now clear local storage
+        await chrome.storage.local.remove("session");
+        console.log("[DA] Session ended and synced to webapp");
+        sendResponse({ success: true });
+      } catch (err) {
+        console.error("[DA] End session failed:", err);
+        sendResponse({ success: false });
+      }
+    })();
+    return true; // Keep message channel open for async response
+  }
+
+  if (message.type === "SYNC_SESSION") {
+    (async () => {
+      try {
+        const session = await getSession();
+        if (session) await syncSessionToBackend(session);
+        sendResponse({ success: true });
+      } catch (err) {
+        console.error("[DA] Manual sync failed:", err);
+        sendResponse({ success: false });
       }
     })();
     return true;

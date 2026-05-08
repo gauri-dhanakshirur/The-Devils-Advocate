@@ -10,13 +10,17 @@ import time
 import logging
 from typing import Optional
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from config import settings
 from agents.orchestrator import Orchestrator
+from webapp_routes import router as webapp_router
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -65,6 +69,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for the webapp
+WEBAPP_DIR = Path(__file__).parent / "webapp"
+app.mount("/static", StaticFiles(directory=str(WEBAPP_DIR / "static")), name="static")
+
+# Include webapp routes
+app.include_router(webapp_router)
+
+
+# ── Webapp Entry Point ──────────────────────────────────────────────
+@app.get("/history", response_class=HTMLResponse, tags=["Webapp"])
+async def serve_webapp():
+    """Serve the Devil's Advocate research history webapp."""
+    template_path = WEBAPP_DIR / "templates" / "index.html"
+    return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
 
 # ---------------------------------------------------------------------------
 # Schemas

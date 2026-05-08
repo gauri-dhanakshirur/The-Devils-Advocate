@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Devil's Advocate — Research History</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/webapp.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ══════════════════════════════════════════════════════════════
+         AUTH SCREEN (login / register)
+    ══════════════════════════════════════════════════════════════════ -->
+    <div id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <div class="logo-icon">DA</div>
+          <div>
+            <div class="brand-name">Devil's Advocate</div>
+            <div class="brand-tagline">DISMANTLE YOUR ECHO CHAMBER</div>
+          </div>
+        </div>
+
+        <!-- Login Form -->
+        <div id="loginForm">
+          <h2 class="auth-title">Sign in</h2>
+          <p class="auth-subtitle">Access your research history and session data.</p>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="loginEmail" class="form-input" placeholder="you@example.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" />
+          </div>
+          <div id="loginError" class="auth-error hidden"></div>
+          <button id="loginBtn" class="btn btn-primary btn-full">Sign In</button>
+          <p class="auth-switch">Don't have an account? <a href="#" id="showRegister">Create one</a></p>
+        </div>
+
+        <!-- Register Form -->
+        <div id="registerForm" class="hidden">
+          <h2 class="auth-title">Create account</h2>
+          <p class="auth-subtitle">Start tracking your research sessions.</p>
+          <div class="form-group">
+            <label class="form-label">Name</label>
+            <input type="text" id="registerName" class="form-input" placeholder="Your name" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="registerEmail" class="form-input" placeholder="you@example.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="registerPassword" class="form-input" placeholder="Min. 6 characters" />
+          </div>
+          <div id="registerError" class="auth-error hidden"></div>
+          <button id="registerBtn" class="btn btn-primary btn-full">Create Account</button>
+          <p class="auth-switch">Already have an account? <a href="#" id="showLogin">Sign in</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         MAIN APP (shown after login)
+    ══════════════════════════════════════════════════════════════════ -->
+    <div id="mainApp" style="display:none; flex-direction:column; min-height:100vh">
+
+      <!-- ── Navbar ──────────────────────────────────────────────── -->
+      <nav class="navbar">
+        <div class="nav-brand">
+          <div class="logo-icon">DA</div>
+          <div class="brand-text">
+            <span class="brand-name">Devil's Advocate</span>
+            <span class="brand-tagline">DISMANTLE YOUR ECHO CHAMBER</span>
+          </div>
+        </div>
+        <div class="nav-links">
+          <a href="#" class="nav-link active" data-view="sessions">Sessions</a>
+          <a href="#" class="nav-link" data-view="analytics">Analytics</a>
+        </div>
+        <div class="nav-right">
+          <div class="sync-indicator">
+            <div class="sync-dot"></div>
+            <span>Synced from extension</span>
+          </div>
+          <div class="user-menu">
+            <span id="userNameDisplay" class="user-name"></span>
+            <button id="logoutBtn" class="btn-ghost">Sign out</button>
+          </div>
+        </div>
+      </nav>
+
+      <!-- ── Main Content ─────────────────────────────────────────── -->
+      <main class="main-content">
+
+        <!-- Sessions View -->
+        <div id="sessionsView" class="view active">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Research Sessions</h1>
+              <p class="page-subtitle">History of every session captured by the Devil's Advocate browser extension.</p>
+            </div>
+          </div>
+
+          <!-- Global Stats -->
+          <div class="stats-grid" id="globalStats">
+            <div class="stat-card">
+              <div class="stat-label">TOTAL SESSIONS</div>
+              <div class="stat-value" id="totalSessions">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">PAGES ANALYZED</div>
+              <div class="stat-value" id="totalPages">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">TOTAL TIME</div>
+              <div class="stat-value" id="totalTime">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">AVG BIAS SCORE</div>
+              <div class="stat-value bias-highlight" id="avgBias">—</div>
+            </div>
+          </div>
+
+          <!-- Bias Score Explainer -->
+          <div class="explainer-card" id="biasExplainer">
+            <div class="explainer-header" id="explainerToggle">
+              <span class="explainer-title">What is the Bias Score?</span>
+              <span class="explainer-chevron">▾</span>
+            </div>
+            <div class="explainer-body" id="explainerBody">
+              <p>The <strong>Bias Score (0–10)</strong> measures how clustered your research perspectives are — mathematically, not subjectively.</p>
+              <div class="explainer-how">
+                <div class="explainer-step">
+                  <div class="step-num">1</div>
+                  <div>Each page you visit is converted into a <strong>3D stance vector</strong> representing its sentiment, objectivity, and ideological lean.</div>
+                </div>
+                <div class="explainer-step">
+                  <div class="step-num">2</div>
+                  <div>The system calculates the <strong>centroid</strong> (average position) of all your vectors across the session.</div>
+                </div>
+                <div class="explainer-step">
+                  <div class="step-num">3</div>
+                  <div>It measures the <strong>average Euclidean distance</strong> from each vector to the centroid.</div>
+                </div>
+                <div class="explainer-step">
+                  <div class="step-num">4</div>
+                  <div>A <strong>tight cluster</strong> (small distance) = high bias. A <strong>spread out</strong> distribution = balanced research.</div>
+                </div>
+              </div>
+              <div class="bias-scale-legend">
+                <div class="legend-item balanced"><span class="legend-dot"></span><strong>0–3</strong> Balanced — diverse perspectives</div>
+                <div class="legend-item moderate"><span class="legend-dot"></span><strong>4–6</strong> Moderate — some clustering</div>
+                <div class="legend-item echo"><span class="legend-dot"></span><strong>7–10</strong> Echo Chamber — very similar sources</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Session History -->
+          <div class="section-header">
+            <span class="section-title">SESSION HISTORY</span>
+          </div>
+          <div id="sessionsList" class="sessions-list">
+            <div class="loading-state"><div class="spinner"></div><span>Loading sessions...</span></div>
+          </div>
+        </div>
+
+        <!-- Session Detail View -->
+        <div id="detailView" class="view">
+          <div class="page-header detail-page-header">
+            <button class="back-btn" id="backBtn">← Back to Sessions</button>
+          </div>
+          <div id="detailContent"></div>
+        </div>
+
+        <!-- Analytics View -->
+        <div id="analyticsView" class="view">
+          <div class="page-header">
+            <h1 class="page-title">Analytics</h1>
+            <p class="page-subtitle">Bias trends and research patterns across all sessions.</p>
+          </div>
+          <div id="analyticsContent"></div>
+        </div>
+
+      </main>
+
+      <!-- ── Footer ──────────────────────────────────────────────── -->
+      <footer class="footer">
+        <span>Powered by Llama 3 + SerpAPI</span>
+        <span class="version">v1.0.0</span>
+      </footer>
+
+    </div><!-- /mainApp -->
+
+  </div><!-- /app -->
+
+  <!-- Citation Modal -->
+  <div id="citationModal" class="modal hidden">
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Add Citation Note</h3>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="citationPageTitle" class="citation-page-title"></p>
+        <textarea id="citationNote" class="citation-textarea" placeholder="Add a note about why this is a key citation (optional)..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelCitation">Cancel</button>
+        <button class="btn btn-primary" id="saveCitation">Save Citation</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/webapp.js"></script>
+</body>
+</html>
