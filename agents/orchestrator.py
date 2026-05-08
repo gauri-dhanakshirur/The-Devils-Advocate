@@ -3,39 +3,21 @@ Devil's Advocate — Lead Orchestrator
 Coordinates the 4 sub-agents in a Sequential Pipeline and formats
 the final response for the browser extension popup.
 
-Pipeline: Gatekeeper → Mirror → Devil's Advocate → Librarian → Synthesis
+Pipeline: Gatekeeper → Mirror → Devil's Advocate → Librarian → Merge
 """
 
 import json
+import logging
 from agents.base_agent import BaseAgent
 from agents.session_integrity_agent import SessionIntegrityAgent
 from agents.bias_auditor_agent import BiasAuditorAgent
 from agents.counter_opinion_agent import CounterOpinionAgent
 from agents.retrieval_verification_agent import RetrievalVerificationAgent
 
+logger = logging.getLogger("orchestrator")
+
 SYNTHESIS_PROMPT = """You are the Lead Orchestrator for Devil's Advocate.
-Your mission is to dismantle confirmation bias.
-
-You will receive a complete analysis package containing:
-1. Agent 1 (Gatekeeper): Verified topic and summary.
-2. Agent 2 (Mirror): Bias score and summary of opinions so far.
-3. Agent 3 (Devil's Advocate): Counter-topics (or a Truth Guardrail if none exist).
-4. Agent 4 (Librarian): Curated real-world links for counter-opinions and inline topics.
-
-Your job is to produce a FINAL RESPONSE with these clear sections:
-
-## 1. The Mirror (Your Research Trajectory)
-Summarize what the user has learned so far and display the Cumulative Bias Score (mention if it's an Echo Chamber or Balanced).
-
-## 2. The Devil's Advocate
-If the Truth-Gating Guardrail was triggered (NO_CREDIBLE_DISSENT_FOUND), clearly state that the topic is largely objective or lacks credible dissent, and prioritize accuracy over forced variety.
-Otherwise, present the strongest counter-topics identified.
-
-## 3. The Librarian's Curated Sources
-List the retrieved links from Agent 4. For each link, provide the Title (as a Markdown link), the perspective (Neutral, Opposing, or Inline), and a brief summary of what it adds to the conversation.
-
-Write in a clear, engaging tone. Use bullet points and headers.
-IMPORTANT: Your response should be in well-formatted Markdown."""
+Your mission is to dismantle confirmation bias."""
 
 
 class Orchestrator(BaseAgent):
@@ -45,7 +27,7 @@ class Orchestrator(BaseAgent):
       2. BiasAuditorAgent       → calculates bias score, extracts theme
       3. CounterOpinionAgent    → generates counter-arguments / applies guardrail
       4. RetrievalVerificationAgent → fetches sources via SerpAPI
-      5. Synthesis              → formats final response
+      5. Merge                  → pairs counter-topics with real links
     """
 
     def __init__(self):
@@ -55,36 +37,129 @@ class Orchestrator(BaseAgent):
         self.devils_advocate = CounterOpinionAgent()
         self.librarian = RetrievalVerificationAgent()
 
+    def _merge_counter_perspectives(self, counter_topics: list, curated_links: list) -> list:
+        """
+        Merge counter-topics from Agent 3 with curated links from Agent 4.
+        Each counter-perspective becomes a clickable item with a URL.
+
+        Strategy: distribute opposing-perspective links across counter-topics,
+        then attach any remaining links.
+        """
+        # Separate links by perspective
+        opposing = [l for l in curated_links if self._is_opposing(l.get("perspective", ""))]
+        inline = [l for l in curated_links if not self._is_opposing(l.get("perspective", ""))]
+
+        merged = []
+        for i, ct in enumerate(counter_topics):
+            perspective = {
+                "topic": ct.get("topic", "Unknown"),
+                "viewpoint": ct.get("alternative_viewpoint", ""),
+                "sources": []
+            }
+            # Assign opposing links round-robin to counter-topics
+            if opposing:
+                link = opposing.pop(0)
+                perspective["sources"].append({
+                    "title": link.get("title", "Source"),
+                    "url": link.get("url", "#"),
+                    "summary": link.get("summary", ""),
+                    "credibility": link.get("credibility", "Medium")
+                })
+            merged.append(perspective)
+
+        # If there are leftover opposing links, distribute to existing topics
+        for i, link in enumerate(opposing):
+            idx = i % len(merged) if merged else 0
+            if merged:
+                merged[idx]["sources"].append({
+                    "title": link.get("title", "Source"),
+                    "url": link.get("url", "#"),
+                    "summary": link.get("summary", ""),
+                    "credibility": link.get("credibility", "Medium")
+                })
+
+        return merged
+
+    def _is_opposing(self, perspective: str) -> bool:
+        p = perspective.lower()
+        return "counter" in p or "opposing" in p or "dissent" in p
+
     def run(self, text: str, url: str) -> dict:
         # ── Agent 1: Gatekeeper ─────────────────────────────────────
-        gatekeeper_output = self.gatekeeper.run(text, url)
+        logger.info("Running Gatekeeper...")
+        try:
+            gatekeeper_output = self.gatekeeper.run(text, url)
+        except Exception as e:
+            logger.error("Gatekeeper failed: %s", e)
+            return {
+                "error": True,
+                "synthesis": f"Analysis Failed — Gatekeeper error: {e}"
+            }
         
         if gatekeeper_output.get("status") != "ACCEPTED":
             return {
                 "error": True,
-                "synthesis": f"⚠️ **Research Paused**\n\nThe Gatekeeper rejected this page: {gatekeeper_output.get('reason')}"
+                "gatekeeper": gatekeeper_output,
+                "synthesis": f"Research Paused — {gatekeeper_output.get('reason')}"
             }
 
         topic = gatekeeper_output.get("overarching_topic", "Unknown")
+        logger.info("Gatekeeper ACCEPTED topic: %s", topic)
 
         # ── Agent 2: Mirror ─────────────────────────────────────────
-        mirror_output = self.mirror.run(text, topic)
+        logger.info("Running Bias Auditor...")
+        try:
+            mirror_output = self.mirror.run(text, topic)
+        except Exception as e:
+            logger.error("Mirror failed: %s", e)
+            mirror_output = {
+                "cumulative_bias_score": 5.0,
+                "research_theme": topic,
+                "opinions_summary": "Unable to analyze bias at this time.",
+                "feedback_prompt": ""
+            }
+
+        logger.info("Bias Score: %s", mirror_output.get("cumulative_bias_score"))
 
         # ── Agent 3: Devil's Advocate ───────────────────────────────
-        da_output = self.devils_advocate.run(mirror_output)
+        logger.info("Running Counter-Opinion Architect...")
+        try:
+            da_output = self.devils_advocate.run(mirror_output)
+        except Exception as e:
+            logger.error("Counter-Opinion failed: %s", e)
+            da_output = {
+                "null_guardrail": "None",
+                "counter_topics": []
+            }
 
         # ── Agent 4: Librarian ──────────────────────────────────────
-        librarian_output = self.librarian.run(da_output)
+        logger.info("Running Retrieval & Verification...")
+        try:
+            librarian_output = self.librarian.run(da_output, topic=mirror_output.get("research_theme", ""))
+        except Exception as e:
+            logger.error("Librarian failed: %s", e)
+            librarian_output = {
+                "curated_links": [],
+                "note": f"Search failed: {e}"
+            }
 
-        # ── Synthesis: Format final response ────────────────────────
-        synthesis_input = (
-            f"=== AGENT 1 (GATEKEEPER) ===\n{json.dumps(gatekeeper_output, indent=2)}\n\n"
-            f"=== AGENT 2 (MIRROR) ===\n{json.dumps(mirror_output, indent=2)}\n\n"
-            f"=== AGENT 3 (DEVIL'S ADVOCATE) ===\n{json.dumps(da_output, indent=2)}\n\n"
-            f"=== AGENT 4 (LIBRARIAN) ===\n{json.dumps(librarian_output, indent=2)}\n\n"
-            "Now synthesize the final Devil's Advocate response."
-        )
-        synthesis = self._call_llm(synthesis_input, temperature=0.5)
+        logger.info("Found %d curated links", len(librarian_output.get("curated_links", [])))
+
+        # ── Merge: pair counter-topics with real links ──────────────
+        counter_topics = da_output.get("counter_topics", [])
+        curated_links = librarian_output.get("curated_links", [])
+        guardrail = da_output.get("null_guardrail", "None")
+
+        counter_perspectives = []
+        guardrail_triggered = "NO_CREDIBLE_DISSENT_FOUND" in str(guardrail)
+
+        if not guardrail_triggered and counter_topics:
+            counter_perspectives = self._merge_counter_perspectives(counter_topics, curated_links)
+
+        # Build synthesis text
+        bias_score = mirror_output.get("cumulative_bias_score", 5.0)
+        bias_label = "Echo Chamber" if bias_score >= 7 else "Moderate" if bias_score >= 4 else "Balanced"
+        synthesis = f"Topic: {topic} | Bias: {bias_score}/10 ({bias_label}) | {len(counter_perspectives)} counter-perspectives"
 
         return {
             "error": False,
@@ -92,5 +167,7 @@ class Orchestrator(BaseAgent):
             "mirror": mirror_output,
             "devils_advocate": da_output,
             "librarian": librarian_output,
+            "counter_perspectives": counter_perspectives,
+            "guardrail_triggered": guardrail_triggered,
             "synthesis": synthesis,
         }

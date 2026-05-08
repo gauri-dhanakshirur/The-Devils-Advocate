@@ -1,87 +1,148 @@
-import { getSession, updateSession, addActivity } from "./storage.js";
-import { evaluateResearchPage } from "./agent.js";
+import { getSession, updateSession, addActivity, addPageResult } from "./storage.js";
 
+const API_BASE = "http://localhost:8000";
+
+// ── Auto-analyze on tab update (only if session is active) ──────────
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status !== "complete" || !tab.url) return;
 
   const session = await getSession();
   if (!session?.active) return;
 
+  // Skip internal Chrome pages
   if (
     tab.url.startsWith("chrome://") ||
-    tab.url.startsWith("chrome-extension://")
+    tab.url.startsWith("chrome-extension://") ||
+    tab.url.startsWith("about:") ||
+    tab.url.startsWith("edge://") ||
+    tab.url.startsWith("devtools://")
   ) return;
 
-  if (session.processedUrls.includes(tab.url)) {
-    console.log("Duplicate skipped:", tab.url);
+  // Skip already-processed URLs
+  if (session.processedUrls && session.processedUrls.includes(tab.url)) {
+    console.log("[DA] Duplicate skipped:", tab.url);
     return;
   }
 
   try {
-    const page = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_PAGE" });
-    if (!page) return;
-
-    session.processedUrls.push(tab.url);
-    session.stats.analyzed++;
-
-    const agentResponse = await evaluateResearchPage(page, session);
-
-    const inferredTopic = agentResponse.session?.inferredTopic;
-    const pageDecision = agentResponse.pageDecision;
-    const recommendations = agentResponse.recommendations;
-    const routing = agentResponse.routing;
-
-    // Agent controls topic unless user overrides later
-    if (!session.topic && inferredTopic) {
-      session.topic = inferredTopic;
+    // Inject content script if needed
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content.js"]
+      });
+    } catch (e) {
+      // May already be injected, or restricted page
+      console.log("[DA] Script injection skipped:", e.message);
     }
 
-    // Persist recommendation state for popup
-    session.recommendations = recommendations || {
-      aligned: [],
-      alternate: []
-    };
+    // Delay for content script readiness
+    await new Promise(r => setTimeout(r, 600));
 
-    if (pageDecision.scrape) {
-      session.stats.approved++;
+    let page;
+    try {
+      page = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_PAGE" });
+    } catch (e) {
+      console.log("[DA] Cannot communicate with page:", tab.url);
+      return;
+    }
 
-      const storedPage = {
-        sessionId: session.sessionId,
-        topic: session.topic,
-        extractedAt: Date.now(),
-        page,
-        pageDecision,
-        routing
-      };
+    if (!page || !page.articleText) {
+      console.log("[DA] No extractable content from:", tab.url);
+      return;
+    }
 
-      await chrome.storage.local.set({
-        [`page_${Date.now()}`]: storedPage
+    // Re-read session (may have been updated)
+    const freshSession = await getSession();
+    if (!freshSession?.active) return;
+
+    // Mark as processed
+    if (!freshSession.processedUrls) freshSession.processedUrls = [];
+    freshSession.processedUrls.push(tab.url);
+    freshSession.stats.analyzed++;
+    await updateSession(freshSession);
+
+    const text = `${page.title || ""} ${page.metaDescription || ""} ${page.articleText || ""}`.trim();
+
+    if (text.length < 20) {
+      const s = await getSession();
+      if (s) { s.stats.skipped++; await updateSession(s); }
+      return;
+    }
+
+    console.log("[DA] Analyzing page:", page.title?.slice(0, 60));
+
+    // Call backend
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    const res = await fetch(`${API_BASE}/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text.slice(0, 12000), url: tab.url }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.error("[DA] API error:", res.status);
+      const s = await getSession();
+      if (s) {
+        s.stats.skipped++;
+        await updateSession(s);
+      }
+      await addActivity({
+        type: "error",
+        title: page.title || tab.url,
+        reason: `API error: ${res.status}`
       });
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.error) {
+      const s = await getSession();
+      if (s) {
+        s.stats.skipped++;
+        await updateSession(s);
+      }
+      await addActivity({
+        type: "skipped",
+        title: page.title || tab.url,
+        reason: data.synthesis || "Rejected by Gatekeeper"
+      });
+    } else {
+      // Success — accumulate into session
+      const s = await getSession();
+      if (s) {
+        s.stats.approved++;
+        await updateSession(s);
+      }
+
+      // Store full result in session history
+      await addPageResult(data, page.title || tab.url, tab.url);
 
       await addActivity({
         type: "approved",
-        title: page.title,
-        reason: pageDecision.reason,
-        confidence: pageDecision.confidence
-      });
-
-      // Placeholder for downstream agent routing
-      console.log("Send approved page to:", routing?.sendTo);
-    } else {
-      session.stats.skipped++;
-
-      await addActivity({
-        type: "skipped",
-        title: page.title,
-        reason: pageDecision.reason,
-        confidence: pageDecision.confidence
+        title: page.title || tab.url,
+        reason: `Bias: ${data.mirror?.cumulative_bias_score ?? "N/A"}/10 | ${(data.counter_perspectives || []).length} counter-perspectives`
       });
     }
 
-    await updateSession(session);
+    console.log("[DA] Analysis complete for:", tab.url);
 
-    console.log("Agent Response:", agentResponse);
   } catch (err) {
-    console.error("Extraction failed:", err);
+    if (err.name === "AbortError") {
+      console.error("[DA] Analysis timed out for:", tab.url);
+    } else {
+      console.error("[DA] Background analysis failed:", err);
+    }
   }
+});
+
+// ── On Install ───────────────────────────────────────────────────────
+chrome.runtime.onInstalled.addListener(() => {
+  console.log("[DA] Devil's Advocate extension installed");
 });

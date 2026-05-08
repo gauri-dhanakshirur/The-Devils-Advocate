@@ -4,7 +4,10 @@ Identifies the "missing mass" in the user's research to break the echo chamber.
 """
 
 import json
+import logging
 from agents.base_agent import BaseAgent
+
+logger = logging.getLogger("counter_opinion")
 
 SYSTEM_PROMPT = """You are the Counter-Opinion Architect (The Devil's Advocate).
 Your sole purpose is to broaden the user's knowledge by introducing diverse perspectives.
@@ -42,25 +45,35 @@ class CounterOpinionAgent(BaseAgent):
 
     def run(self, auditor_output: dict) -> dict:
         prompt = (
-            f"=== RESEARCH THEME ===\n{auditor_output.get('research_theme')}\n\n"
-            f"=== OPINIONS SO FAR ===\n{auditor_output.get('opinions_summary')}\n\n"
+            f"=== RESEARCH THEME ===\n{auditor_output.get('research_theme', 'Unknown')}\n\n"
+            f"=== OPINIONS SO FAR ===\n{auditor_output.get('opinions_summary', 'None provided')}\n\n"
             "Generate counter-topics or apply the Truth-Gating Guardrail if it's objective fact."
         )
 
         raw = self._call_llm(prompt, temperature=0.2)
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-        if cleaned.endswith("```"):
-            cleaned = cleaned.rsplit("```", 1)[0]
-        cleaned = cleaned.strip()
+        cleaned = self._clean_json_response(raw)
 
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
+            logger.warning("Failed to parse CounterOpinion LLM response: %s", cleaned[:200])
             data = {
-                "null_guardrail": "Error parsing JSON.",
+                "null_guardrail": "None",
                 "counter_topics": []
             }
+
+        # Validate counter_topics is a list
+        if not isinstance(data.get("counter_topics"), list):
+            data["counter_topics"] = []
+
+        # Ensure each counter_topic has required fields
+        validated = []
+        for ct in data["counter_topics"]:
+            if isinstance(ct, dict) and "topic" in ct:
+                validated.append({
+                    "topic": ct.get("topic", "Unknown"),
+                    "alternative_viewpoint": ct.get("alternative_viewpoint", "No details provided.")
+                })
+        data["counter_topics"] = validated
 
         return data

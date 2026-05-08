@@ -8,6 +8,7 @@ Or:        uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 import time
 import logging
+from typing import Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -81,8 +82,6 @@ class AnalyzeRequest(BaseModel):
     )
 
 
-from typing import Optional
-
 class AnalyzeResponse(BaseModel):
     """Full Devil's Advocate analysis result."""
     error: bool
@@ -90,6 +89,8 @@ class AnalyzeResponse(BaseModel):
     mirror: Optional[dict] = None
     devils_advocate: Optional[dict] = None
     librarian: Optional[dict] = None
+    counter_perspectives: Optional[list] = None
+    guardrail_triggered: bool = False
     synthesis: str
     elapsed_seconds: float
 
@@ -98,6 +99,10 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     keys_configured: dict
+
+
+class ErrorResponse(BaseModel):
+    detail: str
 
 
 # ---------------------------------------------------------------------------
@@ -136,12 +141,20 @@ async def analyze(request: AnalyzeRequest):
             detail="GROQ_API_KEY is not configured. Cannot run analysis.",
         )
 
-    logger.info("📥 Received analysis request (%d chars) for URL: %s", len(request.text), request.url)
+    # Sanitize input — truncate extremely long text to avoid LLM token limits
+    sanitized_text = request.text.strip()[:12000]
+    if len(sanitized_text) < 20:
+        raise HTTPException(
+            status_code=422,
+            detail="Text too short after sanitization. Minimum 20 characters required.",
+        )
+
+    logger.info("📥 Received analysis request (%d chars) for URL: %s", len(sanitized_text), request.url)
     start = time.time()
 
     try:
         orchestrator = Orchestrator()
-        result = orchestrator.run(request.text, request.url)
+        result = orchestrator.run(sanitized_text, request.url)
     except Exception as e:
         logger.exception("Pipeline failed")
         raise HTTPException(status_code=500, detail=f"Analysis pipeline error: {e}")
@@ -155,6 +168,8 @@ async def analyze(request: AnalyzeRequest):
         mirror=result.get("mirror"),
         devils_advocate=result.get("devils_advocate"),
         librarian=result.get("librarian"),
+        counter_perspectives=result.get("counter_perspectives"),
+        guardrail_triggered=result.get("guardrail_triggered", False),
         synthesis=result.get("synthesis", ""),
         elapsed_seconds=elapsed,
     )
@@ -166,14 +181,22 @@ async def quick_bias(request: AnalyzeRequest):
     from agents.session_integrity_agent import SessionIntegrityAgent
     from agents.bias_auditor_agent import BiasAuditorAgent
 
-    gatekeeper = SessionIntegrityAgent()
-    g_out = gatekeeper.run(request.text, request.url)
-    
-    if g_out.get("status") != "ACCEPTED":
-        return g_out
+    sanitized_text = request.text.strip()[:12000]
+    if len(sanitized_text) < 20:
+        raise HTTPException(status_code=422, detail="Text too short.")
+
+    try:
+        gatekeeper = SessionIntegrityAgent()
+        g_out = gatekeeper.run(sanitized_text, request.url)
         
-    mirror = BiasAuditorAgent()
-    return mirror.run(request.text, g_out.get("overarching_topic", ""))
+        if g_out.get("status") != "ACCEPTED":
+            return g_out
+            
+        mirror = BiasAuditorAgent()
+        return mirror.run(sanitized_text, g_out.get("overarching_topic", ""))
+    except Exception as e:
+        logger.exception("Quick-bias failed")
+        raise HTTPException(status_code=500, detail=f"Quick bias analysis error: {e}")
 
 
 # ---------------------------------------------------------------------------

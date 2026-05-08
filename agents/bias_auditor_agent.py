@@ -4,8 +4,11 @@ Evaluates how the current page affects the overall session trajectory.
 """
 
 import json
+import logging
 from agents.base_agent import BaseAgent
 from vector_memory import vector_memory
+
+logger = logging.getLogger("bias_auditor")
 
 SYSTEM_PROMPT = """You are the Bias & Stance Auditor (The Mirror).
 Your job is to summarize the diverse opinions encountered so far based on the current text and previous topics.
@@ -38,23 +41,19 @@ class BiasAuditorAgent(BaseAgent):
         past_topics = [item["metadata"]["topic"] for item in vector_memory.local_memory]
         
         prompt = (
-            f"=== CURRENT TEXT ===\n{text}\n\n"
+            f"=== CURRENT TEXT ===\n{text[:4000]}\n\n"
             f"=== GATEKEEPER TOPIC ===\n{gatekeeper_topic}\n\n"
             f"=== PAST SESSION TOPICS ===\n{json.dumps(past_topics)}\n\n"
             "Generate the opinions summary and extract the overarching research theme."
         )
 
         raw = self._call_llm(prompt, temperature=0.3)
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1]
-        if cleaned.endswith("```"):
-            cleaned = cleaned.rsplit("```", 1)[0]
-        cleaned = cleaned.strip()
+        cleaned = self._clean_json_response(raw)
 
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
+            logger.warning("Failed to parse BiasAuditor LLM response: %s", cleaned[:200])
             data = {
                 "opinions_summary": "Unable to summarize opinions.",
                 "research_theme": gatekeeper_topic
@@ -62,7 +61,7 @@ class BiasAuditorAgent(BaseAgent):
 
         return {
             "cumulative_bias_score": bias_score,
-            "research_theme": data["research_theme"],
-            "opinions_summary": data["opinions_summary"],
-            "feedback_prompt": f"Is '{data['research_theme']}' your intended research focus? (Thumbs Up/Down)"
+            "research_theme": data.get("research_theme", gatekeeper_topic),
+            "opinions_summary": data.get("opinions_summary", "Unable to summarize."),
+            "feedback_prompt": f"Is '{data.get('research_theme', gatekeeper_topic)}' your intended research focus? (Thumbs Up/Down)"
         }

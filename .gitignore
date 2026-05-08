@@ -1,3 +1,4 @@
+# Python
 .env
 __pycache__/
 *.pyc
@@ -6,4 +7,16 @@ venv/
 *.egg-info/
 dist/
 build/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+*.log

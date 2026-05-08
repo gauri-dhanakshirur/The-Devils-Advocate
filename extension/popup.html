@@ -1,47 +1,197 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Devil's Advocate</title>
   <link rel="stylesheet" href="popup.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="container">
-    <h1>Devil's Advocate</h1>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo-icon">DA</div>
+        <div>
+          <h1>Devil's Advocate</h1>
+          <span class="tagline">Dismantle your echo chamber</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="serverStatus" class="status-dot offline" title="Checking server..."></div>
+      </div>
+    </header>
 
-    <div class="buttons">
-      <button id="startBtn">Start Session</button>
-      <button id="stopBtn">Stop</button>
+    <!-- Connection Banner -->
+    <div id="connectionBanner" class="connection-banner hidden">
+      <span>Backend offline — start server with <code>python main.py</code></span>
     </div>
 
-    <div id="status"></div>
-
-    <div class="topic-box">
-      <h3>Research Topic</h3>
-      <p id="topicDisplay">Awaiting topic inference...</p>
-      <input id="topicOverride" type="text" placeholder="Override topic (optional)" />
-      <button id="overrideBtn">Update Topic</button>
+    <!-- Session Controls -->
+    <div class="controls">
+      <button id="sessionToggle" class="btn btn-primary" disabled>
+        <span class="btn-text">Start Research Session</span>
+      </button>
+      <button id="analyzeBtn" class="btn btn-secondary" disabled>
+        <span class="btn-text">Analyze This Page</span>
+      </button>
     </div>
 
-    <div class="stats">
-      <p>Analyzed: <span id="analyzed">0</span></p>
-      <p>Approved: <span id="approved">0</span></p>
-      <p>Skipped: <span id="skipped">0</span></p>
+    <!-- Session Info Bar -->
+    <div id="sessionBar" class="session-bar hidden">
+      <div class="session-indicator">
+        <div class="pulse-dot"></div>
+        <span>Session Active</span>
+      </div>
+      <span id="sessionDuration" class="session-duration">0:00</span>
     </div>
 
-    <div class="section-card">
-      <h3>Aligned Research</h3>
-      <ul id="alignedList"></ul>
+    <!-- Loading State -->
+    <div id="loadingState" class="loading-state hidden">
+      <div class="loading-spinner"></div>
+      <div class="loading-pipeline">
+        <div class="pipeline-step" id="step1">
+          <span class="step-num">1</span>
+          <span class="step-label">Gatekeeper</span>
+          <span class="step-status">waiting</span>
+        </div>
+        <div class="pipeline-step" id="step2">
+          <span class="step-num">2</span>
+          <span class="step-label">Bias Auditor</span>
+          <span class="step-status">waiting</span>
+        </div>
+        <div class="pipeline-step" id="step3">
+          <span class="step-num">3</span>
+          <span class="step-label">Devil's Advocate</span>
+          <span class="step-status">waiting</span>
+        </div>
+        <div class="pipeline-step" id="step4">
+          <span class="step-num">4</span>
+          <span class="step-label">Librarian</span>
+          <span class="step-status">waiting</span>
+        </div>
+      </div>
     </div>
 
-    <div class="section-card">
-      <h3>Alternate Research</h3>
-      <ul id="alternateList"></ul>
+    <!-- Error State -->
+    <div id="errorState" class="error-state hidden">
+      <p id="errorMessage">Something went wrong</p>
+      <button id="retryBtn" class="btn btn-small">Try Again</button>
     </div>
 
-    <div class="section-card">
-      <h3>Decision Feed</h3>
-      <ul id="activity"></ul>
+    <!-- Results Container -->
+    <div id="resultsContainer" class="results hidden">
+      
+      <!-- Research Trajectory Card -->
+      <div class="card topic-card">
+        <div class="card-header">
+          <span class="card-title">Research Trajectory</span>
+        </div>
+        <p id="topicName" class="topic-name">—</p>
+        <div class="bias-meter">
+          <div class="bias-label">
+            <span>Cumulative Bias Score</span>
+            <span id="biasValue" class="bias-value">—</span>
+          </div>
+          <div class="bias-bar">
+            <div id="biasFill" class="bias-fill" style="width: 0%"></div>
+          </div>
+          <div class="bias-scale">
+            <span>Balanced</span>
+            <span>Echo Chamber</span>
+          </div>
+        </div>
+        <p id="opinionsSummary" class="opinions-summary"></p>
+      </div>
+
+      <!-- Pages Analyzed (Session History) -->
+      <div id="historyCard" class="card">
+        <div class="card-header">
+          <span class="card-title">Pages Analyzed</span>
+          <span id="historyCount" class="card-badge">0</span>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </div>
+
+      <!-- Guardrail Notice -->
+      <div id="guardrailCard" class="card guardrail-card hidden">
+        <div class="card-header">
+          <span class="card-title">Truth Guardrail Activated</span>
+        </div>
+        <p class="guardrail-text">This topic is largely based on objective facts. No artificial counter-arguments were generated to preserve accuracy.</p>
+      </div>
+
+      <!-- Counter-Perspectives (as clickable links) -->
+      <div id="counterCard" class="card counter-card">
+        <div class="card-header">
+          <span class="card-title">Counter-Perspectives</span>
+          <span id="counterCount" class="card-badge">0</span>
+        </div>
+        <p class="card-subtitle">Opposing viewpoints found across your research session</p>
+        <div id="counterList" class="counter-list"></div>
+      </div>
+
+      <!-- Curated Sources -->
+      <div id="sourcesCard" class="card sources-card">
+        <div class="card-header">
+          <span class="card-title">Curated Sources</span>
+          <span id="sourcesCount" class="card-badge">0</span>
+        </div>
+        <div id="sourcesList" class="sources-list"></div>
+      </div>
+
+      <!-- Session Stats -->
+      <div class="card stats-card">
+        <div class="card-header">
+          <span class="card-title">Session Stats</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="stat-value" id="statAnalyzed">0</span>
+            <span class="stat-label">Pages Analyzed</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="statApproved">0</span>
+            <span class="stat-label">Accepted</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="statSkipped">0</span>
+            <span class="stat-label">Filtered</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="statDuration">—</span>
+            <span class="stat-label">Duration</span>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="empty-state">
+      <h3>Ready to Challenge Your Research</h3>
+      <p>Start a session, then browse your research articles normally. Devil's Advocate will automatically analyze each page you visit and accumulate counter-perspectives across your entire session.</p>
+      <div class="quick-tips">
+        <div class="tip">
+          <span class="tip-icon">1</span>
+          <span>Click <strong>Start Research Session</strong></span>
+        </div>
+        <div class="tip">
+          <span class="tip-icon">2</span>
+          <span>Browse research articles as usual</span>
+        </div>
+        <div class="tip">
+          <span class="tip-icon">3</span>
+          <span>Open this popup anytime to see accumulated insights</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Powered by Llama 3 + SerpAPI</span>
+      <span class="version">v1.0.0</span>
+    </footer>
+  </div>
 
   <script type="module" src="popup.js"></script>
 </body>

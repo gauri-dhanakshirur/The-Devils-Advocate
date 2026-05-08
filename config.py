@@ -20,9 +20,9 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
 
     # Groq model settings
-    LLM_MODEL: str = "llama-3.3-70b-versatile"
-    LLM_TEMPERATURE: float = 0.7
-    LLM_MAX_TOKENS: int = 4096
+    LLM_MODEL: str = "llama-3.1-8b-instant"
+    LLM_TEMPERATURE: float = 0.3
+    LLM_MAX_TOKENS: int = 1024
 
     @classmethod
     def validate(cls) -> list[str]:

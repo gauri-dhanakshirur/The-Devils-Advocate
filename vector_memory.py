@@ -1,9 +1,19 @@
 import math
 import logging
 from config import settings
-from pinecone import Pinecone
 
 logger = logging.getLogger("vector_memory")
+
+# Try both package names for Pinecone (they renamed from pinecone-client to pinecone)
+Pinecone = None
+try:
+    from pinecone import Pinecone
+except Exception:
+    try:
+        from pinecone_client import Pinecone
+    except Exception:
+        logger.info("Pinecone SDK not available — using in-memory vector storage only.")
+
 
 class VectorMemory:
     """
@@ -16,7 +26,7 @@ class VectorMemory:
         self.local_memory = []
         self.session_id = "default_session"
 
-        if settings.PINECONE_API_KEY and settings.PINECONE_API_KEY != "your_pinecone_key_here":
+        if Pinecone and settings.PINECONE_API_KEY and settings.PINECONE_API_KEY != "your_pinecone_key_here":
             try:
                 pc = Pinecone(api_key=settings.PINECONE_API_KEY)
                 # Attempt to connect to a default index called 'devils-advocate'
@@ -92,6 +102,12 @@ class VectorMemory:
         vectors = [item["vector"] for item in self.local_memory]
         n = len(vectors)
         dims = len(vectors[0])
+        
+        # Dimension mismatch check
+        if len(new_vector) != dims:
+            logger.warning("Vector dimension mismatch: expected %d, got %d", dims, len(new_vector))
+            return 0.5
+        
         centroid = [sum(vec[i] for vec in vectors) / n for i in range(dims)]
 
         # Calculate cosine similarity between new_vector and centroid
