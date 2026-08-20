@@ -1,4 +1,4 @@
-# 🔥 Devil's Advocate
+#  Devil's Advocate
 
 **A multi-agent AI system that dismantles confirmation bias in real-time.**
 
@@ -11,7 +11,7 @@ Start a research session, browse articles normally, and Devil's Advocate will **
 
 ---
 
-## 🧠 How It Works
+##  How It Works
 
 ```
 User browses research articles with session active
@@ -76,7 +76,7 @@ User browses research articles with session active
 
 ---
 
-## ⚡ Setup — macOS
+##  Setup — macOS
 
 ### 1. Clone the repository
 
@@ -127,8 +127,8 @@ python3 main.py
 You should see:
 
 ```
-✅ All API keys loaded successfully.
-🚀 Devil's Advocate Gateway running on http://0.0.0.0:8000
+ All API keys loaded successfully.
+ Devil's Advocate Gateway running on http://0.0.0.0:8000
 ```
 
 ### 6. Load the Chrome Extension
@@ -141,7 +141,7 @@ You should see:
 
 ---
 
-## ⚡ Setup — Windows
+##  Setup — Windows
 
 ### 1. Clone the repository
 
@@ -194,8 +194,8 @@ python main.py
 You should see:
 
 ```
-✅ All API keys loaded successfully.
-🚀 Devil's Advocate Gateway running on http://0.0.0.0:8000
+ All API keys loaded successfully.
+ Devil's Advocate Gateway running on http://0.0.0.0:8000
 ```
 
 ### 6. Load the Chrome Extension
@@ -208,7 +208,7 @@ You should see:
 
 ---
 
-## 🎯 How to Use
+##  How to Use
 
 Devil's Advocate is **session-based** — it tracks your entire research session, not just one page.
 
@@ -240,7 +240,7 @@ Click **End Session** when you're done. All accumulated data resets.
 
 ---
 
-## 🧪 Run Tests
+##  Run Tests
 
 **macOS:**
 ```bash
@@ -264,7 +264,7 @@ The test suite covers:
 
 ---
 
-## 🌐 API Endpoints
+##  API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -321,7 +321,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/analyze" -Method Post -ContentType
 
 ---
 
-## 🐳 Docker Deployment
+##  Docker Deployment
 
 ```bash
 docker-compose up --build
@@ -331,7 +331,7 @@ The server will start on `http://localhost:8000`. Load the Chrome extension as d
 
 ---
 
-## 🛠 Tech Stack
+##  Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
@@ -343,7 +343,7 @@ The server will start on `http://localhost:8000`. Load the Chrome extension as d
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 The-Devils-Advocate/
@@ -375,7 +375,7 @@ The-Devils-Advocate/
 
 ---
 
-## ❓ Troubleshooting
+##  Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
